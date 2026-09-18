@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
-import { ENEMIES } from '../content/catalog';
-import { SPAWNS } from '../content/world';
+import { BALANCE, ENEMIES } from '../content/catalog';
+import type { AreaDefinition } from '../content/world';
 import { damageRoll, inAttackArc } from '../domain/combat';
 import { attackPower, defeatEnemy } from '../domain/progression';
 import type { EnemyDefinition, GameState, Point } from '../domain/types';
@@ -16,6 +16,8 @@ interface EnemyActor {
   target: Point;
   radius: number;
   respawn: number;
+  knockback: number;
+  deathTimer: number;
 }
 export interface EnemyHooks {
   damage: (amount: number) => void;
@@ -33,9 +35,10 @@ export class EnemySystem {
     solids: Phaser.Physics.Arcade.StaticGroup,
     private readonly effects: Effects,
     private readonly hooks: EnemyHooks,
+    area: AreaDefinition,
   ) {
     this.indicators = scene.add.graphics().setDepth(6000);
-    SPAWNS.forEach((spawn) => {
+    area.spawns.forEach((spawn) => {
       const definition = ENEMIES[spawn.kind];
       const sprite = scene.physics.add
         .sprite(spawn.x, spawn.y, spawn.kind === 'slime' ? 'slime-0' : spawn.kind)
@@ -59,6 +62,8 @@ export class EnemySystem {
         target: { ...spawn },
         radius: 0,
         respawn: 0,
+        knockback: 0,
+        deathTimer: 0,
       });
     });
   }
@@ -68,6 +73,15 @@ export class EnemySystem {
     this.indicators.clear();
     for (const actor of this.actors) {
       const { sprite, definition } = actor;
+      if (actor.deathTimer > 0) {
+        actor.deathTimer = Math.max(0, actor.deathTimer - dt);
+        const progress = 1 - actor.deathTimer / BALANCE.enemyDeathDuration;
+        sprite
+          .setAlpha(1 - progress)
+          .setRotation((progress * (sprite.flipX ? -1 : 1) * Math.PI) / 2);
+        if (actor.deathTimer === 0) sprite.setVisible(false);
+        continue;
+      }
       if (
         definition.id === 'golem' &&
         (this.state.world.quests.sentinel === 'available' || this.state.world.bossDefeated)
@@ -84,7 +98,14 @@ export class EnemySystem {
           Phaser.Math.Distance.Between(player.x, player.y, actor.home.x, actor.home.y) > 140
         ) {
           actor.hp = definition.hp;
-          sprite.setPosition(actor.home.x, actor.home.y).setActive(true).setVisible(true);
+          sprite
+            .setPosition(actor.home.x, actor.home.y)
+            .setVelocity(0)
+            .setAlpha(1)
+            .setRotation(0)
+            .clearTint()
+            .setActive(true)
+            .setVisible(true);
           sprite.body!.enable = true;
           actor.cooldown = 1;
         } else continue;
@@ -102,7 +123,10 @@ export class EnemySystem {
         actor.home.x,
         actor.home.y,
       );
-      if (actor.windup > 0) {
+      if (actor.knockback > 0) {
+        actor.knockback = Math.max(0, actor.knockback - dt);
+        if (actor.knockback === 0) sprite.setVelocity(0);
+      } else if (actor.windup > 0) {
         sprite.setVelocity(0);
         actor.windup -= dt;
         this.indicators
@@ -187,7 +211,7 @@ export class EnemySystem {
         continue;
       hit = true;
       const damage = damageRoll(attackPower(this.state.player) * (skill ? 2 : 1), combo);
-      actor.hp -= damage.amount;
+      actor.hp = Math.max(0, actor.hp - damage.amount);
       sprite.setTintFill(0xf6e2b2);
       this.scene.time.delayedCall(90, () => {
         if (sprite.active) sprite.clearTint();
@@ -199,13 +223,25 @@ export class EnemySystem {
         damage.critical ? '#ffe6a0' : '#f2e9cc',
       );
       if (actor.hp <= 0) {
-        sprite.setActive(false).setVisible(false).setVelocity(0);
+        sprite.setActive(false).setVelocity(0).clearTint();
         sprite.body!.enable = false;
         actor.windup = 0;
+        actor.knockback = 0;
+        actor.deathTimer = BALANCE.enemyDeathDuration;
         actor.respawn = actor.definition.respawn;
         const levels = defeatEnemy(this.state, actor.definition.id);
         this.effects.floating(sprite.x, sprite.y + 28, `+${actor.definition.xp} XP`, '#add5ba');
         this.hooks.defeated(actor.definition.name, levels);
+      } else {
+        const dx = sprite.x - player.x;
+        const dy = sprite.y - player.y;
+        const distance = Math.hypot(dx, dy);
+        const speed = BALANCE.knockbackSpeed * (actor.definition.id === 'golem' ? 0.35 : 1);
+        sprite.setVelocity(
+          (distance > 0 ? dx / distance : facing.x) * speed,
+          (distance > 0 ? dy / distance : facing.y) * speed,
+        );
+        actor.knockback = BALANCE.knockbackDuration;
       }
     }
     return hit;
@@ -225,10 +261,12 @@ export class EnemySystem {
 
   resetEncounters(): void {
     this.actors.forEach((actor) => {
+      if (actor.hp <= 0) return;
       actor.sprite.setPosition(actor.home.x, actor.home.y).setVelocity(0);
       actor.windup = 0;
+      actor.knockback = 0;
       actor.cooldown = 1.5;
-      if (actor.hp > 0) actor.hp = actor.definition.hp;
+      actor.hp = actor.definition.hp;
     });
   }
 }

@@ -1,12 +1,15 @@
 import Phaser from 'phaser';
-import { RIVER } from '../content/world';
+import type { AreaDefinition } from '../content/world';
 
 export class Effects {
   private ambient: Phaser.GameObjects.Graphics;
   private tint: Phaser.GameObjects.Rectangle;
   private time = 0;
 
-  constructor(private readonly scene: Phaser.Scene) {
+  constructor(
+    private readonly scene: Phaser.Scene,
+    private readonly area: AreaDefinition,
+  ) {
     this.ambient = scene.add.graphics().setDepth(9000).setScrollFactor(0);
     this.tint = scene.add
       .rectangle(0, 0, 1, 1, 0x132442)
@@ -85,9 +88,13 @@ export class Effects {
     }
     water.clear().lineStyle(2, 0x95c5b0, 0.23);
     for (let i = 0; i < 55; i++) {
-      const y = (i * 29 + this.time * 9) % 1408;
-      if (y > RIVER.bridgeY - 4 && y < RIVER.bridgeY + RIVER.bridgeHeight + 6) continue;
-      const x = RIVER.x + 12 + ((i * 17) % 53);
+      const y = (i * 29 + this.time * 9) % this.area.height;
+      if (
+        y > this.area.river.bridgeY - 4 &&
+        y < this.area.river.bridgeY + this.area.river.bridgeHeight + 6
+      )
+        continue;
+      const x = this.area.river.x + 12 + ((i * 17) % (this.area.river.width - 43));
       water.lineBetween(x, y, x + 15, y);
     }
   }

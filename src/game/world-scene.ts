@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { BALANCE, JOBS } from '../content/catalog';
-import { regionAt, WORLD } from '../content/world';
+import { regionAt, LEGACY_AREA } from '../content/world';
 import { maxHp, newGame, recoverFromDefeat, useTonic } from '../domain/progression';
 import type { GameState, Point } from '../domain/types';
 import type { GameAudio } from '../platform/audio';
@@ -21,6 +21,7 @@ interface SceneData {
 
 export class WorldScene extends Phaser.Scene {
   private state!: GameState;
+  private readonly area = LEGACY_AREA;
   private hero!: Phaser.Physics.Arcade.Sprite;
   private controls!: InputController;
   private view!: WorldView;
@@ -63,12 +64,13 @@ export class WorldScene extends Phaser.Scene {
   }
 
   create(): void {
-    createTextures(this);
-    this.physics.world.setBounds(30, 40, WORLD.width - 60, WORLD.height - 70);
-    this.view = buildWorld(this, this.state);
+    createTextures(this, this.area);
+    const bounds = this.area.physicsBounds;
+    this.physics.world.setBounds(bounds.x, bounds.y, bounds.w, bounds.h);
+    this.view = buildWorld(this, this.state, this.area);
     const position = this.state.player.position;
     if (!safePosition(position.x, position.y, this.view.obstacles))
-      this.state.player.position = { ...WORLD.spawn };
+      this.state.player.position = { ...this.area.spawn };
     this.hero = this.physics.add
       .sprite(this.state.player.position.x, this.state.player.position.y, 'player-0')
       .setOrigin(0.5, 1)
@@ -76,21 +78,32 @@ export class WorldScene extends Phaser.Scene {
       .setCollideWorldBounds(true);
     this.hero.setSize(14, 12).setOffset(9, 20);
     this.physics.add.collider(this.hero, this.view.solids);
-    this.effects = new Effects(this);
-    this.enemies = new EnemySystem(this, this.state, this.view.solids, this.effects, {
-      damage: (amount) => this.takeDamage(amount),
-      defeated: (_name, levels) => {
-        this.audio.play('pickup');
-        if (levels > 0) {
-          this.ui.toast(`Level ${this.state.player.level} · HP pulih sepenuhnya`, 'reward');
-          this.effects.floating(this.hero.x, this.hero.y - 20, 'LEVEL UP', '#ead298');
-        }
-        if (this.state.world.bossDefeated && this.state.world.quests.sentinel === 'active')
-          this.save(this.ui.activeSlot, false);
+    this.effects = new Effects(this, this.area);
+    this.enemies = new EnemySystem(
+      this,
+      this.state,
+      this.view.solids,
+      this.effects,
+      {
+        damage: (amount) => this.takeDamage(amount),
+        defeated: (_name, levels) => {
+          this.audio.play('pickup');
+          if (levels > 0) {
+            this.ui.toast(`Level ${this.state.player.level} · HP pulih sepenuhnya`, 'reward');
+            this.effects.floating(this.hero.x, this.hero.y - 20, 'LEVEL UP', '#ead298');
+          }
+          if (this.state.world.bossDefeated && this.state.world.quests.sentinel === 'active')
+            this.save(this.ui.activeSlot, false);
+        },
       },
-    });
-    this.interactions = new InteractionSystem(this.state, this.ui, this.view, () =>
-      this.save(this.ui.activeSlot),
+      this.area,
+    );
+    this.interactions = new InteractionSystem(
+      this.state,
+      this.ui,
+      this.view,
+      () => this.save(this.ui.activeSlot),
+      this.area,
     );
     this.controls = new InputController(this.ui.host);
     this.ui.bindInput(this.controls);
@@ -111,14 +124,14 @@ export class WorldScene extends Phaser.Scene {
     };
     const camera = this.cameras.main;
     camera
-      .setBounds(0, 0, WORLD.width, WORLD.height)
+      .setBounds(0, 0, this.area.width, this.area.height)
       .setRoundPixels(true)
       .setZoom(this.scale.width < 700 ? 1 : 1.25);
     if (this.sceneData.playing) {
       camera.startFollow(this.hero, true, 0.1, 0.1);
       camera.centerOn(this.hero.x, this.hero.y);
-      this.ui.announce(regionAt(this.hero.x, this.hero.y).name);
-    } else camera.centerOn(700, 610);
+      this.ui.announce(regionAt(this.area, this.hero.x, this.hero.y).name);
+    } else camera.centerOn(this.area.overview.x, this.area.overview.y);
     this.input.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
       if (this.ui.blocked || pointer.button !== 0) return;
       const point = camera.getWorldPoint(pointer.x, pointer.y);
@@ -231,7 +244,7 @@ export class WorldScene extends Phaser.Scene {
     this.state.player.position.y = this.hero.y;
     if (!this.ui.blocked) this.enemies.update(dt, this.hero);
     this.effects.update(dt, this.state.world.seconds, this.view.water);
-    const region = regionAt(this.hero.x, this.hero.y).name;
+    const region = regionAt(this.area, this.hero.x, this.hero.y).name;
     if (region !== this.currentRegion) {
       if (this.currentRegion) this.ui.announce(region);
       this.currentRegion = region;
@@ -287,7 +300,9 @@ export class WorldScene extends Phaser.Scene {
     if (this.state.player.hp <= 0) {
       const gold = this.state.player.gold;
       recoverFromDefeat(this.state);
-      this.hero.setPosition(WORLD.spawn.x, WORLD.spawn.y).setVelocity(0);
+      this.hero
+        .setPosition(this.state.player.position.x, this.state.player.position.y)
+        .setVelocity(0);
       this.enemies.resetEncounters();
       this.invulnerable = 2;
       this.ui.dialog(
@@ -320,11 +335,15 @@ export class WorldScene extends Phaser.Scene {
   }
 
   private refreshHud(): void {
-    this.ui.update(this.state, {
-      nearby: this.interactions.nearby(this.hero),
-      skillCooldown: this.skillTimer,
-      rollCooldown: this.rollCooldown,
-      boss: this.enemies.getBoss(this.hero),
-    });
+    this.ui.update(
+      this.state,
+      {
+        nearby: this.interactions.nearby(this.hero),
+        skillCooldown: this.skillTimer,
+        rollCooldown: this.rollCooldown,
+        boss: this.enemies.getBoss(this.hero),
+      },
+      this.area,
+    );
   }
 }

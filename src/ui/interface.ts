@@ -1,5 +1,5 @@
 import { ITEMS, JOBS } from '../content/catalog';
-import { regionAt } from '../content/world';
+import { regionAt, type AreaDefinition } from '../content/world';
 import { attackPower, maxHp, xpNeeded } from '../domain/progression';
 import type { GameState, ItemId } from '../domain/types';
 import type { GameAudio } from '../platform/audio';
@@ -33,6 +33,7 @@ export class GameInterface {
   private intro: HTMLElement;
   private toastHost: HTMLElement;
   private state: GameState | null = null;
+  private area: AreaDefinition | null = null;
   private slot = 1;
   private started = false;
   private lastFocus: HTMLElement | null = null;
@@ -229,16 +230,18 @@ export class GameInterface {
   }
 
   openPanel(panel: string): void {
-    if (!this.state) return;
+    if (!this.state || !this.area) return;
     if (panel === 'journal') this.journal();
     if (panel === 'inventory') this.inventory();
     if (panel === 'map') {
       this.dialog(
-        'The Larkhaven Reach',
-        'ATLAS · WILAYAH PEMBUKA',
-        '<canvas class="large-map" width="720" height="480" aria-label="Peta Larkhaven, Mossveil dan The Old Watch"></canvas><p class="map-legend"><span>● Kamu</span><span>◈ Penduduk desa</span><span>□ Penjaga reruntuhan</span></p>',
+        this.area.atlas.title,
+        this.area.atlas.subtitle,
+        '<canvas class="large-map" width="720" height="480"></canvas><p class="map-legend"><span>● Kamu</span><span>◈ Penduduk desa</span><span>□ Penjaga reruntuhan</span></p>',
       );
-      drawMap(this.modal.querySelector('canvas')!, this.state, true);
+      const canvas = this.modal.querySelector('canvas')!;
+      canvas.setAttribute('aria-label', this.area.atlas.description);
+      drawMap(canvas, this.state, this.area, true);
     }
     if (panel === 'pause')
       this.dialog(
@@ -357,8 +360,9 @@ export class GameInterface {
     }
   }
 
-  update(state: GameState, details: HudDetails): void {
+  update(state: GameState, details: HudDetails, area: AreaDefinition): void {
     this.state = state;
+    this.area = area;
     const p = state.player;
     const text = (key: string, value: string): void => {
       const node = this.hudRefs.get(key)!;
@@ -372,7 +376,7 @@ export class GameInterface {
     text('xp', `${p.xp} / ${xpNeeded(p.level)} XP`);
     text('gold', String(p.gold));
     text('tonics', String(p.inventory.tonic));
-    const region = regionAt(p.position.x, p.position.y);
+    const region = regionAt(area, p.position.x, p.position.y);
     text('region', region.name);
     text('region-subtitle', region.subtitle);
     const hour = (8 + state.world.seconds / 45) % 24;
@@ -423,7 +427,7 @@ export class GameInterface {
       text('boss-name', details.boss.name);
       this.hudRefs.get('boss-bar')!.style.width = `${(details.boss.hp / details.boss.max) * 100}%`;
     }
-    drawMap(this.find('#minimap') as HTMLCanvasElement, state);
+    drawMap(this.find('#minimap') as HTMLCanvasElement, state, area);
   }
 
   announce(name: string): void {

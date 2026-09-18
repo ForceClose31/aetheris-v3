@@ -78,7 +78,7 @@ test('starts, moves, accepts a quest, pauses, and reloads a saved journey', asyn
 
 test('combat earns quest credit and Mara consumes items and unlocks the boss', async ({ page }) => {
   const state = newGame();
-  state.player.position = { x: 1050, y: 602 };
+  state.player.position = { x: 1050, y: 550 };
   state.player.weapon = 'iron-sword';
   state.player.inventory['iron-sword'] = 1;
   state.player.inventory.herb = 3;
@@ -86,8 +86,9 @@ test('combat earns quest credit and Mara consumes items and unlocks the boss', a
   state.world.questKills = 2;
   await loadFixture(page, state);
   await page.keyboard.down('KeyJ');
-  await page.waitForTimeout(1200);
+  await expect(page.locator('[data-hud="quest-body"]')).toContainText('Moss Slime 3/3');
   await page.keyboard.up('KeyJ');
+  await page.screenshot({ path: 'test-results/aetheris-combat.png' });
   const fought = await saveAndRead(page);
   expect(fought.world.questKills).toBeGreaterThanOrEqual(3);
   expect(fought.world.kills.slime).toBeGreaterThanOrEqual(1);

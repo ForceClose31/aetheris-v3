@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CAMP, CHESTS, GROVES, HERBS, HOUSES, NPCS, RIVER, WORLD } from '../content/world';
+import type { AreaDefinition } from '../content/world';
 import type { GameState, Rect } from '../domain/types';
 
 export interface WorldView {
@@ -10,7 +10,7 @@ export interface WorldView {
   water: Phaser.GameObjects.Graphics;
 }
 
-export function buildWorld(scene: Phaser.Scene, state: GameState): WorldView {
+export function buildWorld(scene: Phaser.Scene, state: GameState, area: AreaDefinition): WorldView {
   const solids = scene.physics.add.staticGroup();
   const obstacles: Rect[] = [];
   const herbs = new Map<string, Phaser.GameObjects.Image>();
@@ -22,15 +22,20 @@ export function buildWorld(scene: Phaser.Scene, state: GameState): WorldView {
   };
   const prop = (x: number, y: number, key: string, scale = 2): Phaser.GameObjects.Image =>
     scene.add.image(x, y, key).setOrigin(0.5, 1).setScale(scale).setDepth(y);
-  scene.add.image(0, 0, 'terrain').setOrigin(0).setDepth(-10);
-  solid(RIVER.x + RIVER.width / 2, RIVER.bridgeY / 2, RIVER.width, RIVER.bridgeY);
+  scene.add.image(0, 0, area.terrainKey).setOrigin(0).setDepth(-10);
   solid(
-    RIVER.x + RIVER.width / 2,
-    (RIVER.bridgeY + RIVER.bridgeHeight + WORLD.height) / 2,
-    RIVER.width,
-    WORLD.height - RIVER.bridgeY - RIVER.bridgeHeight,
+    area.river.x + area.river.width / 2,
+    area.river.bridgeY / 2,
+    area.river.width,
+    area.river.bridgeY,
   );
-  HOUSES.forEach((house) => {
+  solid(
+    area.river.x + area.river.width / 2,
+    (area.river.bridgeY + area.river.bridgeHeight + area.height) / 2,
+    area.river.width,
+    area.height - area.river.bridgeY - area.river.bridgeHeight,
+  );
+  area.houses.forEach((house) => {
     prop(house.x, house.y, `house-${house.style}`);
     solid(house.x, house.y - 44, 164, 80);
     scene.add
@@ -45,7 +50,7 @@ export function buildWorld(scene: Phaser.Scene, state: GameState): WorldView {
       .setDepth(house.y + 1)
       .setAlpha(0.85);
   });
-  GROVES.forEach((grove, index) => {
+  area.groves.forEach((grove, index) => {
     for (let y = grove.y; y < grove.y + grove.h; y += 76)
       for (let x = grove.x; x < grove.x + grove.w; x += 70) {
         const offset = (Math.floor(y / 76) % 2) * 22;
@@ -53,32 +58,18 @@ export function buildWorld(scene: Phaser.Scene, state: GameState): WorldView {
         solid(x + offset, y - 9, 18, 18);
       }
   });
-  for (const [x, y] of [
-    [192, 566],
-    [696, 625],
-    [197, 980],
-    [712, 1152],
-    [987, 809],
-    [1314, 1110],
-    [1550, 351],
-    [1635, 722],
-  ]) {
-    prop(x!, y!, 'rock');
-    solid(x!, y! - 10, 43, 25);
+  for (const { x, y } of area.rocks) {
+    prop(x, y, 'rock');
+    solid(x, y - 10, 43, 25);
   }
-  for (const [x, y] of [
-    [1286, 228],
-    [1493, 228],
-    [1286, 398],
-    [1493, 398],
-  ]) {
-    prop(x!, y!, 'pillar');
-    solid(x!, y! - 15, 42, 30);
+  for (const { x, y } of area.pillars) {
+    prop(x, y, 'pillar');
+    solid(x, y - 15, 42, 30);
   }
-  prop(438, 584, 'well');
-  solid(438, 570, 62, 36);
-  prop(CAMP.x, CAMP.y, 'camp', 1.5);
-  NPCS.forEach((npc) => {
+  prop(area.well.x, area.well.y, 'well');
+  solid(area.well.x, area.well.y - 14, 62, 36);
+  prop(area.camp.x, area.camp.y, 'camp', 1.5);
+  area.npcs.forEach((npc) => {
     prop(npc.x, npc.y, npc.color, 1.6);
     solid(npc.x, npc.y - 10, 22, 22);
     scene.add
@@ -92,11 +83,11 @@ export function buildWorld(scene: Phaser.Scene, state: GameState): WorldView {
       .setOrigin(0.5)
       .setDepth(npc.y + 1);
   });
-  HERBS.forEach((herb) => {
+  area.herbs.forEach((herb) => {
     if (!state.world.gathered.includes(herb.id))
       herbs.set(herb.id, prop(herb.x, herb.y, 'herb', 1.5));
   });
-  CHESTS.forEach((chest) => {
+  area.chests.forEach((chest) => {
     const sprite = prop(chest.x, chest.y, 'chest', 1.8);
     if (state.world.opened.includes(chest.id)) sprite.setTint(0x777777);
     chests.set(chest.id, sprite);

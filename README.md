@@ -40,6 +40,10 @@ Untuk browser lain, ubah `channel` pada `playwright.config.ts`; gunakan `npx pla
 
 Temui **Mara** di dekat sumur. Seberangi jembatan, kalahkan tiga Moss Slime, dan petik tiga Moonleaf. Kembali ke Mara, persiapkan pedang besi dan tonik dari **Borin**, lalu selidiki **The Old Watch**. **Elian** memulihkan HP tanpa biaya. **Sera** menawarkan delapan job pada level 10; pilihan bersifat permanen.
 
+Combat memakai arah hadap dan jangkauan serangan. Hit mengurangi HP musuh dan mendorongnya mundur sebentar; HP nol mematikan collision dan memainkan animasi rebah/memudar selama 0,3 detik sebelum musuh disembunyikan. Boss menerima dorongan lebih kecil dan tidak respawn setelah kalah.
+
+Verifikasi manual combat: hadapi slime lalu tekan J; pastikan angka damage, health bar, dan dorongan terlihat. Habiskan HP-nya, periksa animasi kematian dan hadiah satu kali. Jeda saat animasi berlangsung untuk memastikan animasi ikut berhenti; lanjutkan, menjauh, lalu kembali setelah lebih dari 22 detik untuk memeriksa respawn dengan tampilan dan HP pulih.
+
 ## Penyimpanan
 
 Tersedia tiga slot di `localStorage`, manual save lewat menu atau api unggun, dan autosave setiap 30 detik permainan aktif. Memuat slot mengganti perjalanan aktif setelah konfirmasi. Save menyimpan karakter, inventaris, posisi, quest, peti, bahan yang dipetik, waktu, dan stok pedagang; posisi/HP musuh biasa direset ketika memuat. Boss yang sudah dikalahkan tetap mati.

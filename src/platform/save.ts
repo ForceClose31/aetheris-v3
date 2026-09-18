@@ -1,5 +1,5 @@
 import { JOBS } from '../content/catalog';
-import { WORLD } from '../content/world';
+import { LEGACY_AREA } from '../content/world';
 import { maxHp, xpNeeded } from '../domain/progression';
 import type { GameState } from '../domain/types';
 
@@ -51,8 +51,8 @@ export function validateState(value: unknown): value is GameState {
     return false;
   if (
     !object(p.position) ||
-    !number(p.position.x, 20, WORLD.width - 20) ||
-    !number(p.position.y, 20, WORLD.height - 20)
+    !number(p.position.x, 20, LEGACY_AREA.width - 20) ||
+    !number(p.position.y, 20, LEGACY_AREA.height - 20)
   )
     return false;
   if (

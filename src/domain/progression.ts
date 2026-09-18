@@ -1,5 +1,5 @@
 import { BALANCE, ENEMIES, JOBS } from '../content/catalog';
-import { WORLD } from '../content/world';
+import { START_POSITION } from '../content/world';
 import type { EnemyId, GameState, JobId, PlayerState } from './types';
 
 export function newGame(): GameState {
@@ -13,7 +13,7 @@ export function newGame(): GameState {
       job: null,
       weapon: 'wood-sword',
       inventory: { herb: 0, tonic: 3, 'wood-sword': 1, 'iron-sword': 0 },
-      position: { ...WORLD.spawn },
+      position: { ...START_POSITION },
     },
     world: {
       seconds: 0,
@@ -122,5 +122,5 @@ export function recoverFromDefeat(state: GameState): void {
   state.player.gold = Math.floor(state.player.gold * 0.9);
   state.player.hp = maxHp(state.player);
   state.player.stamina = 100;
-  state.player.position = { ...WORLD.spawn };
+  state.player.position = { ...START_POSITION };
 }

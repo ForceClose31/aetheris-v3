@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { HOUSES, PATHS, RIVER, RUINS, WORLD } from '../content/world';
+import type { AreaDefinition } from '../content/world';
 
 type Painter = (context: CanvasRenderingContext2D) => void;
 const pixel = (
@@ -60,13 +60,13 @@ function person(c: CanvasRenderingContext2D, coat: string, accent: string, frame
   pixel(c, '#99714c', 22, 22, 6, 2);
 }
 
-export function createTextures(scene: Phaser.Scene): void {
-  texture(scene, 'terrain', WORLD.width, WORLD.height, (c) => {
-    pixel(c, '#466348', 0, 0, WORLD.width, WORLD.height);
-    for (let y = 0; y < WORLD.height; y += 16) {
-      for (let x = 0; x < WORLD.width; x += 16) {
+export function createTextures(scene: Phaser.Scene, area: AreaDefinition): void {
+  texture(scene, area.terrainKey, area.width, area.height, (c) => {
+    pixel(c, '#466348', 0, 0, area.width, area.height);
+    for (let y = 0; y < area.height; y += 16) {
+      for (let x = 0; x < area.width; x += 16) {
         const r = hash(x, y);
-        const forest = x > 920;
+        const forest = x > area.forestStartX;
         pixel(
           c,
           forest
@@ -82,7 +82,7 @@ export function createTextures(scene: Phaser.Scene): void {
         if (r > 0.95) pixel(c, '#afb984', x + 10, y + 9, 2, 2);
       }
     }
-    PATHS.forEach(({ x, y, w, h }) => {
+    area.paths.forEach(({ x, y, w, h }) => {
       pixel(c, '#657752', x - 6, y - 6, w + 12, h + 12);
       pixel(c, '#8e8b62', x, y, w, h);
       for (let py = y + 4; py < y + h - 4; py += 12)
@@ -92,42 +92,48 @@ export function createTextures(scene: Phaser.Scene): void {
         }
     });
     // Riverbanks, authored crossing, and stepping stone village square.
-    pixel(c, '#294f47', RIVER.x - 14, 0, RIVER.width + 28, WORLD.height);
-    pixel(c, '#74805a', RIVER.x - 6, 0, RIVER.width + 12, WORLD.height);
-    pixel(c, '#285963', RIVER.x, 0, RIVER.width, WORLD.height);
-    for (let y = 0; y < WORLD.height; y += 24) {
-      pixel(c, '#326e73', RIVER.x + 7, y, RIVER.width - 14, 7);
-      pixel(c, '#4a8380', RIVER.x + 15 + hash(y, 1) * 30, y + 9, 24, 2);
+    pixel(c, '#294f47', area.river.x - 14, 0, area.river.width + 28, area.height);
+    pixel(c, '#74805a', area.river.x - 6, 0, area.river.width + 12, area.height);
+    pixel(c, '#285963', area.river.x, 0, area.river.width, area.height);
+    for (let y = 0; y < area.height; y += 24) {
+      pixel(c, '#326e73', area.river.x + 7, y, area.river.width - 14, 7);
+      pixel(c, '#4a8380', area.river.x + 15 + hash(y, 1) * 30, y + 9, 24, 2);
     }
-    for (let x = RIVER.x - 18; x < RIVER.x + RIVER.width + 18; x += 10) {
-      pixel(c, '#453f31', x, RIVER.bridgeY, 10, RIVER.bridgeHeight);
-      pixel(c, '#a38c5f', x, RIVER.bridgeY + 3, 8, RIVER.bridgeHeight - 6);
-      pixel(c, '#c2a975', x + 1, RIVER.bridgeY + 6, 2, RIVER.bridgeHeight - 12);
+    for (let x = area.river.x - 18; x < area.river.x + area.river.width + 18; x += 10) {
+      pixel(c, '#453f31', x, area.river.bridgeY, 10, area.river.bridgeHeight);
+      pixel(c, '#a38c5f', x, area.river.bridgeY + 3, 8, area.river.bridgeHeight - 6);
+      pixel(c, '#c2a975', x + 1, area.river.bridgeY + 6, 2, area.river.bridgeHeight - 12);
     }
-    pixel(c, '#513e2c', RIVER.x - 22, RIVER.bridgeY - 4, RIVER.width + 44, 5);
-    pixel(c, '#c3a06a', RIVER.x - 22, RIVER.bridgeY - 8, RIVER.width + 44, 4);
-    pixel(c, '#513e2c', RIVER.x - 22, RIVER.bridgeY + RIVER.bridgeHeight, RIVER.width + 44, 5);
-    for (let y = 526; y < 705; y += 22)
-      for (let x = 345; x < 555; x += 26) {
+    pixel(c, '#513e2c', area.river.x - 22, area.river.bridgeY - 4, area.river.width + 44, 5);
+    pixel(c, '#c3a06a', area.river.x - 22, area.river.bridgeY - 8, area.river.width + 44, 4);
+    pixel(
+      c,
+      '#513e2c',
+      area.river.x - 22,
+      area.river.bridgeY + area.river.bridgeHeight,
+      area.river.width + 44,
+      5,
+    );
+    for (let y = area.square.y; y < area.square.y + area.square.h; y += 22)
+      for (let x = area.square.x; x < area.square.x + area.square.w; x += 26) {
         pixel(c, '#717961', x + (y % 2) * 8, y, 22, 17);
         pixel(c, '#979b7c', x + 1, y, 20, 2);
       }
-    pixel(c, '#4c6054', RUINS.x - 30, RUINS.y - 20, RUINS.w + 60, RUINS.h + 40);
-    for (let y = RUINS.y; y < RUINS.y + RUINS.h; y += 23)
-      for (let x = RUINS.x; x < RUINS.x + RUINS.w; x += 25) {
+    pixel(c, '#4c6054', area.ruins.x - 30, area.ruins.y - 20, area.ruins.w + 60, area.ruins.h + 40);
+    for (let y = area.ruins.y; y < area.ruins.y + area.ruins.h; y += 23)
+      for (let x = area.ruins.x; x < area.ruins.x + area.ruins.w; x += 25) {
         pixel(c, hash(x, y) > 0.5 ? '#758071' : '#647469', x, y, 22, 20);
         pixel(c, '#8d9680', x, y, 22, 2);
       }
     c.strokeStyle = '#a4a47b';
     c.lineWidth = 3;
-    c.beginPath();
-    c.arc(1380, 303, 58, 0, Math.PI * 2);
-    c.stroke();
-    c.beginPath();
-    c.arc(1380, 303, 47, 0, Math.PI * 2);
-    c.stroke();
+    for (const radius of area.arena.radii) {
+      c.beginPath();
+      c.arc(area.arena.x, area.arena.y, radius, 0, Math.PI * 2);
+      c.stroke();
+    }
     // Small gardens beside the village houses.
-    HOUSES.forEach((house) => {
+    area.houses.forEach((house) => {
       for (let row = 0; row < 3; row++)
         for (let col = 0; col < 5; col++) {
           const x = house.x - 91 + col * 9;

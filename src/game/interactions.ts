@@ -1,5 +1,5 @@
 import { JOBS } from '../content/catalog';
-import { CAMP, CHESTS, HERBS, NPCS, type NpcId } from '../content/world';
+import type { AreaDefinition, NpcId } from '../content/world';
 import {
   buyItem,
   chooseJob,
@@ -27,29 +27,34 @@ export class InteractionSystem {
     private readonly ui: GameInterface,
     private readonly view: WorldView,
     private readonly save: () => void,
+    private readonly area: AreaDefinition,
   ) {}
 
   nearby(point: Point): string {
     const targets: Target[] = [
-      ...NPCS.map((npc) => ({
+      ...this.area.npcs.map((npc) => ({
         id: npc.id,
         type: 'npc' as const,
         name: `Bicara dengan ${npc.name}`,
         point: npc,
       })),
-      ...HERBS.filter((herb) => !this.state.world.gathered.includes(herb.id)).map((herb) => ({
-        id: herb.id,
-        type: 'herb' as const,
-        name: 'Petik Moonleaf',
-        point: herb,
-      })),
-      ...CHESTS.filter((chest) => !this.state.world.opened.includes(chest.id)).map((chest) => ({
-        id: chest.id,
-        type: 'chest' as const,
-        name: 'Buka peti persediaan',
-        point: chest,
-      })),
-      { id: 'camp', type: 'camp', name: 'Istirahat di api unggun', point: CAMP },
+      ...this.area.herbs
+        .filter((herb) => !this.state.world.gathered.includes(herb.id))
+        .map((herb) => ({
+          id: herb.id,
+          type: 'herb' as const,
+          name: 'Petik Moonleaf',
+          point: herb,
+        })),
+      ...this.area.chests
+        .filter((chest) => !this.state.world.opened.includes(chest.id))
+        .map((chest) => ({
+          id: chest.id,
+          type: 'chest' as const,
+          name: 'Buka peti persediaan',
+          point: chest,
+        })),
+      { id: 'camp', type: 'camp', name: 'Istirahat di api unggun', point: this.area.camp },
     ];
     let nearest = 76;
     this.target = null;
