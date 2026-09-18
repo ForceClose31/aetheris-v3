@@ -2,8 +2,6 @@
 
 **The Quiet Before** — RPG aksi 2D untuk browser. Perjalanan dimulai sebagai warga biasa di Larkhaven, tanpa kekuatan khusus atau garis keturunan legendaris.
 
-Implementasi pertama mencakup satu wilayah pembuka yang dapat dimainkan. Visi RPG lengkap tetap mengacu pada [dokumen desain](docs/design.md); status fitur dan tahapan selanjutnya ada di [roadmap](docs/roadmap.md).
-
 ## Menjalankan
 
 Gunakan Node.js 22.16+ dan npm. Jalankan dari direktori proyek:
@@ -59,7 +57,4 @@ src/platform/      # Input, audio sintetis, adapter penyimpanan
 src/ui/            # HUD, dialog, menu, dan peta
 tests/unit/        # Invariant gameplay dan integritas save
 tests/browser/     # Alur permainan melalui browser
-docs/             # Desain, arsitektur, content, asset pipeline, roadmap
 ```
-
-Lihat [arsitektur](docs/architecture.md), [content wilayah pertama](docs/content.md), dan [pipeline aset](docs/assets.md) sebelum memperluas sistem. `AGENTS.md` dan dokumen desain asli dipertahankan.
