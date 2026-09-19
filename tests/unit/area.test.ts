@@ -91,12 +91,12 @@ it('uses the supplied area for world collision, interactions, water and atlas ma
   const state = newGame();
   state.world.quests.sentinel = 'active';
   const view = buildWorld(scene, state, area);
-  expect(scene.add.image).toHaveBeenCalledWith(0, 0, 'test-terrain');
+  expect(scene.add.image).toHaveBeenCalledWith(0, 0, 'test-terrain/ground-0');
   expect(view.obstacles).toContainEqual({ x: 400, y: 0, w: 96, h: 160 });
   expect(view.obstacles).toContainEqual({ x: 400, y: 252, w: 96, h: 228 });
   expect(safePosition(448, 200, view.obstacles)).toBe(true);
   expect(safePosition(448, 300, view.obstacles)).toBe(false);
-  expect(scene.add.image).toHaveBeenCalledWith(80, 90, 'well');
+  expect(scene.add.image).toHaveBeenCalledWith(80, 90, 'test-terrain/well');
   const ui = { toast: vi.fn() } as unknown as GameInterface;
   const interactions = new InteractionSystem(state, ui, view, vi.fn(), area);
   expect(interactions.nearby(area.herbs[0]!)).toBe('Petik Moonleaf');
@@ -132,7 +132,7 @@ it('uses the supplied area for world collision, interactions, water and atlas ma
   expect(regionAt(area, 500, 585).name).toBe('Test');
 });
 
-it('round trips an original version 1 payload without adding area or equipment fields', () => {
+it('migrates an original version 1 payload, writing version 3 only on successful save', () => {
   const record = {
     version: 1,
     savedAt: '2026-09-18T00:00:00.000Z',
@@ -168,7 +168,19 @@ it('round trips an original version 1 payload without adding area or equipment f
     },
   });
   const loaded = store.read(1);
-  expect(loaded).toEqual(record);
+  expect(loaded?.version).toBe(3);
+  expect(loaded?.state.player.equipment).toEqual({ weapon: 'wood-sword', body: null, head: null });
+  expect(loaded?.state.player).not.toHaveProperty('weapon');
+  expect(loaded?.state.player.inventory).toEqual({
+    herb: 0,
+    tonic: 3,
+    'wood-sword': 1,
+    'iron-sword': 0,
+    'steel-sword': 0,
+    'padded-vest': 0,
+    'leather-cap': 0,
+  });
+  expect(JSON.parse(stored)).toEqual(record);
   expect(store.write(1, loaded!.state)).toEqual({ ok: true });
-  expect(JSON.parse(stored)).toMatchObject({ version: 1, state: record.state });
+  expect(JSON.parse(stored)).toMatchObject({ version: 3, state: loaded!.state });
 });

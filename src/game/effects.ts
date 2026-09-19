@@ -87,6 +87,7 @@ export class Effects {
       }
     }
     water.clear().lineStyle(2, 0x95c5b0, 0.23);
+    if (!this.area.river) return;
     for (let i = 0; i < 55; i++) {
       const y = (i * 29 + this.time * 9) % this.area.height;
       if (

@@ -18,21 +18,24 @@ export function drawMap(
   c.fillRect(area.forestStartX * sx, 0, canvas.width, canvas.height);
   c.fillStyle = '#738166';
   area.paths.forEach((p) => c.fillRect(p.x * sx, p.y * sy, p.w * sx, p.h * sy));
-  c.fillStyle = '#528183';
-  c.fillRect(area.river.x * sx, 0, area.river.width * sx, canvas.height);
-  c.fillStyle = '#b6a276';
-  c.fillRect(
-    (area.river.x - 10) * sx,
-    area.river.bridgeY * sy,
-    (area.river.width + 20) * sx,
-    area.river.bridgeHeight * sy,
-  );
+  if (area.river) {
+    c.fillStyle = '#528183';
+    c.fillRect(area.river.x * sx, 0, area.river.width * sx, canvas.height);
+    c.fillStyle = '#b6a276';
+    c.fillRect(
+      (area.river.x - 10) * sx,
+      area.river.bridgeY * sy,
+      (area.river.width + 20) * sx,
+      area.river.bridgeHeight * sy,
+    );
+  }
   c.fillStyle = '#213a30';
   area.groves.forEach((g) => c.fillRect(g.x * sx, g.y * sy, g.w * sx, g.h * sy));
   c.fillStyle = '#b09b72';
   area.houses.forEach((h) => c.fillRect((h.x - 80) * sx, (h.y - 120) * sy, 160 * sx, 110 * sy));
   c.fillStyle = '#858d77';
-  c.fillRect(area.ruins.x * sx, area.ruins.y * sy, area.ruins.w * sx, area.ruins.h * sy);
+  if (area.ruins)
+    c.fillRect(area.ruins.x * sx, area.ruins.y * sy, area.ruins.w * sx, area.ruins.h * sy);
   area.npcs.forEach((npc) => {
     c.fillStyle = '#e8ca81';
     c.fillRect(npc.x * sx - 2, npc.y * sy - 2, 4, 4);
@@ -41,6 +44,15 @@ export function drawMap(
   if (boss && state.world.quests.sentinel === 'active' && !state.world.bossDefeated) {
     c.strokeStyle = '#d3876d';
     c.strokeRect(boss.x * sx - 4, boss.y * sy - 4, 8, 8);
+  }
+  c.fillStyle = '#f2d18b';
+  for (const exit of area.exits) {
+    c.fillRect(exit.x * sx, exit.y * sy, Math.max(4, exit.w * sx), Math.max(4, exit.h * sy));
+    if (large) {
+      c.font = '12px monospace';
+      c.textAlign = exit.x < area.width / 2 ? 'left' : 'right';
+      c.fillText(exit.label, exit.x * sx, exit.y * sy - 8);
+    }
   }
   const { x, y } = state.player.position;
   c.fillStyle = '#f8efc9';

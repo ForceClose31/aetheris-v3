@@ -1,14 +1,14 @@
-import { JOBS } from '../content/catalog';
-import { LEGACY_AREA } from '../content/world';
+import { ITEMS, JOBS } from '../content/catalog';
+import { AREAS, AREA_ORIGINS, LEGACY_AREA, legacyMapAt, safeLocation } from '../content/world';
 import { maxHp, xpNeeded } from '../domain/progression';
-import type { GameState } from '../domain/types';
+import type { EquipSlot, GameState, ItemId, MapId } from '../domain/types';
 
 export interface StoragePort {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
 }
 export interface SaveRecord {
-  version: 1;
+  version: 3;
   savedAt: string;
   state: GameState;
 }
@@ -27,10 +27,31 @@ const strings = (value: unknown): value is string[] =>
 const stage = (value: unknown): boolean =>
   ['available', 'active', 'complete'].includes(String(value));
 
-export function validateState(value: unknown): value is GameState {
+// Payload shapes: v1 = legacy world + weapon field; v2 = split maps + weapon field;
+// v3 = current, equipment record instead of weapon. Each is validated with its own rules.
+function validatePayload(value: unknown, version: 1 | 2 | 3 = 3): boolean {
   if (!object(value) || !object(value.player) || !object(value.world)) return false;
   const p = value.player;
   const w = value.world;
+  if (version !== 1 && (typeof p.mapId !== 'string' || !Object.hasOwn(AREAS, p.mapId)))
+    return false;
+  if (version === 3) {
+    const slotItem = (item: unknown, slot: EquipSlot): boolean =>
+      typeof item === 'string' &&
+      Object.hasOwn(ITEMS, item) &&
+      ITEMS[item as ItemId].slot === slot &&
+      item !== 'herb' &&
+      item !== 'tonic';
+    const eq = p.equipment;
+    if (
+      !object(eq) ||
+      !slotItem(eq.weapon, 'weapon') ||
+      !(eq.body === null || slotItem(eq.body, 'body')) ||
+      !(eq.head === null || slotItem(eq.head, 'head'))
+    )
+      return false;
+  } else if (!['wood-sword', 'iron-sword'].includes(String(p.weapon))) return false;
+  const area = version === 1 ? LEGACY_AREA : AREAS[p.mapId as MapId];
   if (
     !integer(p.level, 1, 100) ||
     !number(p.xp, 0, xpNeeded(p.level)) ||
@@ -41,18 +62,17 @@ export function validateState(value: unknown): value is GameState {
     return false;
   if (p.job !== null && (typeof p.job !== 'string' || !Object.hasOwn(JOBS, p.job) || p.level < 10))
     return false;
-  if (!['wood-sword', 'iron-sword'].includes(String(p.weapon))) return false;
+  const inventoryKeys =
+    version === 3 ? Object.keys(ITEMS) : ['herb', 'tonic', 'wood-sword', 'iron-sword'];
   if (
     !object(p.inventory) ||
-    !['herb', 'tonic', 'wood-sword', 'iron-sword'].every((key) =>
-      integer((p.inventory as Record<string, unknown>)[key], 0),
-    )
+    !inventoryKeys.every((key) => integer((p.inventory as Record<string, unknown>)[key], 0))
   )
     return false;
   if (
     !object(p.position) ||
-    !number(p.position.x, 20, LEGACY_AREA.width - 20) ||
-    !number(p.position.y, 20, LEGACY_AREA.height - 20)
+    !number(p.position.x, 20, area.width - 20) ||
+    !number(p.position.y, 20, area.height - 20)
   )
     return false;
   if (
@@ -75,7 +95,40 @@ export function validateState(value: unknown): value is GameState {
   if (w.quests.sentinel !== 'available' && w.quests.supplies !== 'complete') return false;
   if (w.quests.sentinel === 'complete' && !w.bossDefeated) return false;
   const typed = value as unknown as GameState;
+  // Legacy payloads have no equipment record; their HP ceiling uses the old formula.
+  if (version !== 3) {
+    const jobHp = p.job && typeof p.job === 'string' ? JOBS[p.job as keyof typeof JOBS].hp : 0;
+    return number(p.hp, 1, 70 + (Number(p.level) - 1) * 9 + jobHp);
+  }
   return typed.player.hp <= maxHp(typed.player);
+}
+
+export function validateState(value: unknown): value is GameState {
+  return validatePayload(value, 3);
+}
+
+// v1/v2 payloads carry a `weapon` field; the migrated v3 state keeps an equipment
+// record as the single source of truth. Idempotent: migrated output has no weapon
+// field left to map again, and ownership of the equipped weapon is repaired.
+function migrateLegacy(value: unknown, from: 1 | 2): GameState | null {
+  if (!validatePayload(value, from)) return null;
+  const state = structuredClone(value) as GameState & { player: { weapon?: string } };
+  const p = state.player;
+  if (from === 1) {
+    p.mapId = legacyMapAt(p.position);
+    const origin = AREA_ORIGINS[p.mapId];
+    const area = AREAS[p.mapId];
+    p.position = { x: p.position.x - origin.x, y: p.position.y - origin.y };
+    if (!safeLocation(area, p.position)) p.position = { ...area.spawn };
+  }
+  const weapon = p.weapon as ItemId;
+  delete p.weapon;
+  p.equipment = { weapon, body: null, head: null };
+  const inventory = p.inventory as Record<string, unknown>;
+  for (const id of Object.keys(ITEMS))
+    if (!Number.isFinite(Number(inventory[id]))) inventory[id] = 0;
+  if (inventory[weapon] === 0) inventory[weapon] = 1;
+  return validateState(state) ? state : null;
 }
 
 export class SaveStore {
@@ -88,13 +141,17 @@ export class SaveStore {
       const record: unknown = JSON.parse(raw);
       if (
         !object(record) ||
-        record.version !== 1 ||
+        (record.version !== 1 && record.version !== 2 && record.version !== 3) ||
         typeof record.savedAt !== 'string' ||
-        !Number.isFinite(Date.parse(record.savedAt)) ||
-        !validateState(record.state)
+        !Number.isFinite(Date.parse(record.savedAt))
       )
         return null;
-      return record as unknown as SaveRecord;
+      const state =
+        record.version === 3
+          ? record.state
+          : migrateLegacy(record.state, record.version === 1 ? 1 : 2);
+      if (!state || !validateState(state)) return null;
+      return { version: 3, savedAt: record.savedAt, state };
     } catch {
       return null;
     }
@@ -104,7 +161,7 @@ export class SaveStore {
     if (!integer(slot, 1, 3) || !validateState(state))
       return { ok: false, message: 'Data tidak valid; penyimpanan sebelumnya tetap aman.' };
     try {
-      const record: SaveRecord = { version: 1, savedAt: new Date().toISOString(), state };
+      const record: SaveRecord = { version: 3, savedAt: new Date().toISOString(), state };
       this.storage.setItem(prefix + slot, JSON.stringify(record));
       return { ok: true };
     } catch {

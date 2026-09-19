@@ -1,4 +1,4 @@
-import { JOBS } from '../content/catalog';
+import { ITEMS, JOBS } from '../content/catalog';
 import type { AreaDefinition, NpcId } from '../content/world';
 import {
   buyItem,
@@ -9,7 +9,7 @@ import {
   maxHp,
   suppliesReady,
 } from '../domain/progression';
-import type { GameState, JobId, Point } from '../domain/types';
+import type { GameState, ItemId, JobId, Point } from '../domain/types';
 import type { GameInterface } from '../ui/interface';
 import type { WorldView } from '../rendering/world';
 
@@ -54,7 +54,16 @@ export class InteractionSystem {
           name: 'Buka peti persediaan',
           point: chest,
         })),
-      { id: 'camp', type: 'camp', name: 'Istirahat di api unggun', point: this.area.camp },
+      ...(this.area.camp
+        ? [
+            {
+              id: 'camp',
+              type: 'camp' as const,
+              name: 'Istirahat di api unggun',
+              point: this.area.camp,
+            },
+          ]
+        : []),
     ];
     let nearest = 76;
     this.target = null;
@@ -208,22 +217,29 @@ export class InteractionSystem {
   private shop(): void {
     const p = this.state.player;
     const stock = this.state.world.merchantStock;
+    const goods: ItemId[] = ['iron-sword', 'steel-sword', 'padded-vest', 'leather-cap'];
+    const rows = goods
+      .map(
+        (id) =>
+          `<div class="shop-item"><div><h3>${ITEMS[id].name}</h3><p>${ITEMS[id].description}</p></div><b>${ITEMS[id].price} ◈</b></div>`,
+      )
+      .join('');
     this.ui.dialog(
       'Borin’s Forge',
       'PANDAI BESI & PERBEKALAN',
-      `<p>“Besi yang baik tak membuatmu berani. Tapi setidaknya ia tidak patah ketika kamu mencoba.”</p><div class="shop-item"><div><h3>Pedang besi</h3><p>+9 serangan · langsung dipakai</p></div><b>35 ◈</b></div><div class="shop-item"><div><h3>Tonik pemulih</h3><p>+45 HP · stok ${stock}</p></div><b>8 ◈</b></div><p class="muted">Gold: ${p.gold} · Moonleaf: ${p.inventory.herb}. Meracik tonik memakai 3 daun; sisihkan daun untuk Mara.</p>`,
+      `<p>“Besi yang baik tak membuatmu berani. Tapi setidaknya ia tidak patah ketika kamu mencoba.”</p>${rows}<div class="shop-item"><div><h3>${ITEMS.tonic.name}</h3><p>+45 HP · stok ${stock}</p></div><b>${ITEMS.tonic.price} ◈</b></div><p class="muted">Gold: ${p.gold} · Moonleaf: ${p.inventory.herb}. Meracik tonik memakai 3 daun; sisihkan daun untuk Mara.</p>`,
       [
-        {
-          label: p.inventory['iron-sword'] ? 'Pedang sudah dimiliki' : 'Beli pedang',
-          disabled: p.gold < 35 || p.inventory['iron-sword'] > 0,
+        ...goods.map((id) => ({
+          label: p.inventory[id] > 0 ? `${ITEMS[id].name} dimiliki` : `Beli ${ITEMS[id].name}`,
+          disabled: p.inventory[id] > 0 || p.gold < (ITEMS[id].price ?? 0),
           run: () => {
-            if (buyItem(this.state, 'iron-sword')) this.ui.toast('Pedang besi dipakai.', 'reward');
+            if (buyItem(this.state, id)) this.ui.toast(`${ITEMS[id].name} dipakai.`, 'reward');
             this.shop();
           },
-        },
+        })),
         {
           label: 'Beli tonik',
-          disabled: p.gold < 8 || stock < 1,
+          disabled: p.gold < (ITEMS.tonic.price ?? 0) || stock < 1,
           secondary: true,
           run: () => {
             buyItem(this.state, 'tonic');

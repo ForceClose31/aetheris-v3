@@ -1,16 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { JOBS } from '../../src/content/catalog';
 import {
+  attackPower,
   buyItem,
   chooseJob,
   completeSentinel,
   completeSupplies,
   craftTonic,
   defeatEnemy,
+  equipItem,
   grantXp,
   maxHp,
   newGame,
   recoverFromDefeat,
+  unequipSlot,
   useTonic,
   xpNeeded,
 } from '../../src/domain/progression';
@@ -21,7 +24,7 @@ describe('ordinary beginnings and progression', () => {
     const p = newGame().player;
     expect(p.level).toBe(1);
     expect(p.job).toBeNull();
-    expect(p.weapon).toBe('wood-sword');
+    expect(p.equipment).toEqual({ weapon: 'wood-sword', body: null, head: null });
   });
   it('carries XP across multiple levels and restores health', () => {
     const p = newGame().player;
@@ -78,7 +81,7 @@ describe('quest and economy invariants', () => {
     expect(buyItem(state, 'iron-sword')).toBe(true);
     expect(buyItem(state, 'iron-sword')).toBe(false);
     expect(state.player.gold).toBe(65);
-    expect(state.player.weapon).toBe('iron-sword');
+    expect(state.player.equipment.weapon).toBe('iron-sword');
   });
   it('consumes exact crafting materials and never wastes healing at full health', () => {
     const state = newGame();
@@ -109,6 +112,74 @@ describe('quest and economy invariants', () => {
     expect(state.player.gold).toBe(27);
     expect(state.player.xp).toBe(22);
     expect(state.world.questKills).toBe(2);
+  });
+});
+
+describe('equipment slots, derived stats and swap safety', () => {
+  it('derives attack and max HP from equipped items through a single path', () => {
+    const state = newGame();
+    const p = state.player;
+    expect(attackPower(p)).toBe(11);
+    expect(maxHp(p)).toBe(70);
+    p.inventory['iron-sword'] = 1;
+    p.inventory['padded-vest'] = 1;
+    p.inventory['leather-cap'] = 1;
+    expect(equipItem(state, 'iron-sword')).toBe(true);
+    expect(equipItem(state, 'padded-vest')).toBe(true);
+    expect(equipItem(state, 'leather-cap')).toBe(true);
+    expect(p.equipment).toEqual({ weapon: 'iron-sword', body: 'padded-vest', head: 'leather-cap' });
+    expect(attackPower(p)).toBe(20);
+    expect(maxHp(p)).toBe(110);
+    expect(p.inventory['padded-vest']).toBe(1);
+    expect(p.inventory['iron-sword']).toBe(1);
+  });
+  it('rejects unowned, non-equippable and duplicate equips without changing state', () => {
+    const state = newGame();
+    const p = state.player;
+    expect(equipItem(state, 'iron-sword')).toBe(false);
+    expect(equipItem(state, 'leather-cap')).toBe(false);
+    p.inventory['padded-vest'] = 1;
+    expect(equipItem(state, 'padded-vest')).toBe(true);
+    expect(equipItem(state, 'padded-vest')).toBe(false);
+    expect(equipItem(state, 'herb')).toBe(false);
+    expect(equipItem(state, 'tonic')).toBe(false);
+    expect(equipItem(state, 'steel-sword')).toBe(false);
+    expect(p.equipment).toEqual({ weapon: 'wood-sword', body: 'padded-vest', head: null });
+  });
+  it('unequips to the base appearance and never heals through equipment swaps', () => {
+    const state = newGame();
+    const p = state.player;
+    p.inventory['padded-vest'] = 1;
+    expect(unequipSlot(state, 'body')).toBe(false);
+    expect(equipItem(state, 'padded-vest')).toBe(true);
+    expect(maxHp(p)).toBe(95);
+    p.hp = 95;
+    expect(unequipSlot(state, 'body')).toBe(true);
+    expect(p.equipment.body).toBeNull();
+    expect(maxHp(p)).toBe(70);
+    expect(p.hp).toBe(70);
+    expect(p.inventory['padded-vest']).toBe(1);
+    expect(equipItem(state, 'padded-vest')).toBe(true);
+    expect(p.hp).toBe(70);
+    expect(maxHp(p)).toBe(95);
+    expect(unequipSlot(state, 'head')).toBe(false);
+    expect(unequipSlot(state, 'weapon')).toBe(false);
+    expect(p.equipment.weapon).toBe('wood-sword');
+  });
+  it('auto-equips purchased gear, keeps purchases unique and prices from the catalog', () => {
+    const state = newGame();
+    state.player.gold = 145;
+    expect(buyItem(state, 'padded-vest')).toBe(true);
+    expect(state.player.equipment.body).toBe('padded-vest');
+    expect(state.player.inventory['padded-vest']).toBe(1);
+    expect(buyItem(state, 'padded-vest')).toBe(false);
+    expect(state.player.gold).toBe(105);
+    expect(buyItem(state, 'steel-sword')).toBe(true);
+    expect(state.player.equipment.weapon).toBe('steel-sword');
+    expect(attackPower(state.player)).toBe(27);
+    expect(buyItem(state, 'leather-cap')).toBe(true);
+    expect(maxHp(state.player)).toBe(110);
+    expect(state.player.gold).toBe(0);
   });
 });
 

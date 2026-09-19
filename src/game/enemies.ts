@@ -7,6 +7,7 @@ import type { EnemyDefinition, GameState, Point } from '../domain/types';
 import type { Effects } from './effects';
 
 interface EnemyActor {
+  spawnId: string;
   sprite: Phaser.Physics.Arcade.Sprite;
   definition: EnemyDefinition;
   home: Point;
@@ -36,9 +37,11 @@ export class EnemySystem {
     private readonly effects: Effects,
     private readonly hooks: EnemyHooks,
     area: AreaDefinition,
+    private readonly respawns: Record<string, number> = {},
   ) {
     this.indicators = scene.add.graphics().setDepth(6000);
-    area.spawns.forEach((spawn) => {
+    area.spawns.forEach((spawn, index) => {
+      const spawnId = `${this.state.player.mapId}:${index}`;
       const definition = ENEMIES[spawn.kind];
       const sprite = scene.physics.add
         .sprite(spawn.x, spawn.y, spawn.kind === 'slime' ? 'slime-0' : spawn.kind)
@@ -52,16 +55,25 @@ export class EnemySystem {
           spawn.kind === 'golem' ? 49 : spawn.kind === 'wolf' ? 18 : 12,
         );
       scene.physics.add.collider(sprite, solids);
+      const waiting = this.respawns[spawnId] !== undefined;
+      const hiddenBoss =
+        spawn.kind === 'golem' &&
+        (state.world.bossDefeated || state.world.quests.sentinel === 'available');
+      if (waiting || hiddenBoss) {
+        sprite.setVisible(false).setActive(false);
+        sprite.body!.enable = false;
+      }
       this.actors.push({
+        spawnId,
         sprite,
         definition,
         home: { x: spawn.x, y: spawn.y },
-        hp: definition.hp,
+        hp: waiting ? 0 : definition.hp,
         cooldown: 1,
         windup: 0,
         target: { ...spawn },
         radius: 0,
-        respawn: 0,
+        respawn: waiting ? Math.max(0, this.respawns[spawnId]! - state.world.seconds) : 0,
         knockback: 0,
         deathTimer: 0,
       });
@@ -98,6 +110,7 @@ export class EnemySystem {
           Phaser.Math.Distance.Between(player.x, player.y, actor.home.x, actor.home.y) > 140
         ) {
           actor.hp = definition.hp;
+          delete this.respawns[actor.spawnId];
           sprite
             .setPosition(actor.home.x, actor.home.y)
             .setVelocity(0)
@@ -229,6 +242,8 @@ export class EnemySystem {
         actor.knockback = 0;
         actor.deathTimer = BALANCE.enemyDeathDuration;
         actor.respawn = actor.definition.respawn;
+        this.respawns[actor.spawnId] =
+          this.state.world.seconds + BALANCE.enemyDeathDuration + actor.definition.respawn;
         const levels = defeatEnemy(this.state, actor.definition.id);
         this.effects.floating(sprite.x, sprite.y + 28, `+${actor.definition.xp} XP`, '#add5ba');
         this.hooks.defeated(actor.definition.name, levels);

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { GameState } from '../../src/domain/types';
 import { newGame } from '../../src/domain/progression';
 import { SaveStore, validateState, type StoragePort } from '../../src/platform/save';
 
@@ -31,7 +32,7 @@ describe('versioned browser saves', () => {
       '{broken',
       'null',
       '{}',
-      JSON.stringify({ version: 2, savedAt: new Date().toISOString(), state: newGame() }),
+      JSON.stringify({ version: 99, savedAt: new Date().toISOString(), state: newGame() }),
     ]) {
       data.setItem('aetheris:save:1', raw);
       expect(store.read(1)).toBeNull();
@@ -70,5 +71,73 @@ describe('versioned browser saves', () => {
     raw.player.level = 10;
     raw.player.job = 'toString';
     expect(validateState(raw)).toBe(false);
+  });
+  it('migrates version 2 payloads to equipment, idempotently across reloads', () => {
+    const v2 = {
+      version: 2,
+      savedAt: '2026-09-19T00:00:00.000Z',
+      state: {
+        player: {
+          mapId: 'mossveil',
+          level: 4,
+          xp: 10,
+          hp: 90,
+          stamina: 55,
+          gold: 60,
+          job: null,
+          weapon: 'iron-sword',
+          inventory: { herb: 2, tonic: 1, 'wood-sword': 1, 'iron-sword': 1 },
+          position: { x: 286, y: 802 },
+        },
+        world: {
+          seconds: 240,
+          kills: { slime: 5, wolf: 1, golem: 0 },
+          gathered: ['leaf-2'],
+          opened: [],
+          quests: { supplies: 'complete', sentinel: 'active' },
+          questKills: 3,
+          bossDefeated: false,
+          merchantStock: 5,
+        },
+      },
+    };
+    let stored = JSON.stringify(v2);
+    const store = new SaveStore({
+      getItem: () => stored,
+      setItem: (_key, value) => {
+        stored = value;
+      },
+    });
+    const migrated = store.read(1)!.state;
+    expect(migrated.player.equipment).toEqual({ weapon: 'iron-sword', body: null, head: null });
+    expect(migrated.player).not.toHaveProperty('weapon');
+    expect(migrated.player.mapId).toBe('mossveil');
+    expect(migrated.player.inventory).toEqual({
+      herb: 2,
+      tonic: 1,
+      'wood-sword': 1,
+      'iron-sword': 1,
+      'steel-sword': 0,
+      'padded-vest': 0,
+      'leather-cap': 0,
+    });
+    expect(store.write(1, migrated).ok).toBe(true);
+    expect(store.read(1)!.state).toEqual(migrated);
+  });
+  it('rejects corrupt or wrong-slot equipment ids instead of half-valid states', () => {
+    const migrated = newGame();
+    for (const equipment of [
+      { weapon: 'banana', body: null, head: null },
+      { weapon: 'padded-vest', body: null, head: null },
+      { weapon: 'iron-sword', body: 'iron-sword', head: null },
+      { weapon: 'iron-sword', body: 'banana', head: null },
+      { weapon: 'iron-sword', body: null, head: 'wood-sword' },
+      { weapon: 'wood-sword', body: null, head: 'herb' },
+    ] as unknown as GameState['player']['equipment'][]) {
+      const state = structuredClone(migrated);
+      state.player.equipment = equipment;
+      expect(validateState(state)).toBe(false);
+    }
+    expect(validateState(migrated)).toBe(true);
   });
 });

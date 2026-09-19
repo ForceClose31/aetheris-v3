@@ -1,6 +1,6 @@
 import { ITEMS, JOBS } from '../content/catalog';
 import { regionAt, type AreaDefinition } from '../content/world';
-import { attackPower, maxHp, xpNeeded } from '../domain/progression';
+import { attackPower, equipItem, maxHp, unequipSlot, xpNeeded } from '../domain/progression';
 import type { GameState, ItemId } from '../domain/types';
 import type { GameAudio } from '../platform/audio';
 import type { Action, InputController } from '../platform/input';
@@ -281,21 +281,58 @@ export class GameInterface {
   private inventory(): void {
     const p = this.state!.player;
     const items = (Object.keys(ITEMS) as ItemId[]).filter((id) => p.inventory[id] > 0);
+    const equipped = (id: ItemId): boolean =>
+      p.equipment.weapon === id || p.equipment.body === id || p.equipment.head === id;
+    const iconFor = (id: ItemId): string =>
+      icon(
+        ITEMS[id].slot === 'body'
+          ? 'armor'
+          : ITEMS[id].slot === 'head'
+            ? 'helm'
+            : id === 'herb'
+              ? 'leaf'
+              : id === 'tonic'
+                ? 'potion'
+                : 'sword',
+      );
+    const actions: { label: string; disabled?: boolean; secondary?: boolean; run: () => void }[] =
+      [];
+    for (const id of items) {
+      const slot = ITEMS[id].slot;
+      if (!slot) continue;
+      if (equipped(id)) {
+        if (slot !== 'weapon')
+          actions.push({
+            label: `Lepas ${ITEMS[id].name}`,
+            secondary: true,
+            run: () => {
+              unequipSlot(this.state!, slot);
+              this.inventory();
+            },
+          });
+      } else
+        actions.push({
+          label: `Pakai ${ITEMS[id].name}`,
+          run: () => {
+            equipItem(this.state!, id);
+            this.inventory();
+          },
+        });
+    }
+    actions.push({
+      label: 'Minum tonik',
+      disabled: p.inventory.tonic < 1 || p.hp >= maxHp(p),
+      run: () => {
+        this.hooks?.tonic();
+        this.inventory();
+      },
+    });
+    actions.push({ label: 'Kembali', secondary: true, run: () => this.close() });
     this.dialog(
       'Bekal perjalanan',
       'INVENTARIS & KARAKTER',
-      `<div class="stat-grid"><div><small>LEVEL</small><b>${p.level}</b></div><div><small>JOB</small><b>${p.job ? JOBS[p.job].name : 'Villager'}</b></div><div><small>SERANGAN</small><b>${attackPower(p)}</b></div><div><small>GOLD</small><b>${p.gold}</b></div></div><div class="item-list">${items.map((id) => `<article class="item-row"><div class="item-icon">${icon(id === 'herb' ? 'leaf' : id === 'tonic' ? 'potion' : 'sword')}</div><div><h3>${ITEMS[id].name} ${p.weapon === id ? '<span class="tag">DIPAKAI</span>' : ''}</h3><p>${ITEMS[id].description}</p><small>${ITEMS[id].rarity}</small></div><b>×${p.inventory[id]}</b></article>`).join('')}</div>`,
-      [
-        {
-          label: 'Minum tonik',
-          disabled: p.inventory.tonic < 1 || p.hp >= maxHp(p),
-          run: () => {
-            this.hooks?.tonic();
-            this.inventory();
-          },
-        },
-        { label: 'Kembali', secondary: true, run: () => this.close() },
-      ],
+      `<div class="stat-grid"><div><small>LEVEL</small><b>${p.level}</b></div><div><small>JOB</small><b>${p.job ? JOBS[p.job].name : 'Villager'}</b></div><div><small>SERANGAN</small><b>${attackPower(p)}</b></div><div><small>HP MAKS</small><b>${maxHp(p)}</b></div><div><small>GOLD</small><b>${p.gold}</b></div></div><div class="item-list">${items.map((id) => `<article class="item-row"><div class="item-icon">${iconFor(id)}</div><div><h3>${ITEMS[id].name} ${equipped(id) ? '<span class="tag">DIPAKAI</span>' : ''}</h3><p>${ITEMS[id].description}</p><small>${ITEMS[id].rarity}</small></div><b>×${p.inventory[id]}</b></article>`).join('')}</div>`,
+      actions,
     );
   }
 

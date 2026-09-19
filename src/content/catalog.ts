@@ -1,4 +1,11 @@
-import type { EnemyDefinition, EnemyId, ItemId, JobDefinition, JobId } from '../domain/types';
+import type {
+  EnemyDefinition,
+  EnemyId,
+  EquipSlot,
+  ItemId,
+  JobDefinition,
+  JobId,
+} from '../domain/types';
 
 export const JOBS: Record<JobId, JobDefinition> = {
   warrior: {
@@ -119,7 +126,18 @@ export const ENEMIES: Record<EnemyId, EnemyDefinition> = {
   },
 };
 
-export const ITEMS: Record<ItemId, { name: string; description: string; rarity: string }> = {
+export const ITEMS: Record<
+  ItemId,
+  {
+    name: string;
+    description: string;
+    rarity: string;
+    slot?: EquipSlot;
+    attack?: number;
+    hp?: number;
+    price?: number;
+  }
+> = {
   herb: {
     name: 'Moonleaf',
     description: 'Daun obat dari tepian Mossveil. Tiga daun dapat diracik menjadi tonik.',
@@ -129,16 +147,46 @@ export const ITEMS: Record<ItemId, { name: string; description: string; rarity: 
     name: 'Tonik pemulih',
     description: 'Memulihkan 45 HP. Gunakan dengan tombol R.',
     rarity: 'Common',
+    price: 8,
   },
   'wood-sword': {
     name: 'Pedang latihan',
     description: 'Kayu ash yang diasah. Awal yang sederhana.',
     rarity: 'Common',
+    slot: 'weapon',
+    attack: 0,
   },
   'iron-sword': {
     name: 'Pedang besi',
     description: 'Ditempa Borin. Menambah 9 daya serang.',
     rarity: 'Uncommon',
+    slot: 'weapon',
+    attack: 9,
+    price: 35,
+  },
+  'steel-sword': {
+    name: 'Pedang baja',
+    description: 'Tempaan ganda Borin untuk jalan utara. Menambah 16 daya serang.',
+    rarity: 'Rare',
+    slot: 'weapon',
+    attack: 16,
+    price: 75,
+  },
+  'padded-vest': {
+    name: 'Rompi empuk',
+    description: 'Lapisan kulit tebal karya Borin. Menambah 25 HP maksimum.',
+    rarity: 'Uncommon',
+    slot: 'body',
+    hp: 25,
+    price: 40,
+  },
+  'leather-cap': {
+    name: 'Topi kulit',
+    description: 'Pelindung kepala ringan pengelana. Menambah 15 HP maksimum.',
+    rarity: 'Common',
+    slot: 'head',
+    hp: 15,
+    price: 30,
   },
 };
 

@@ -6,6 +6,8 @@ const paths: Record<string, string> = {
   settings:
     '<path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="9" cy="18" r="2"/>',
   sword: '<path d="m7 17 12-12 2-2-1 6L9 20M4 14l6 6M3 21l4-4"/>',
+  armor: '<path d="M12 3 5 6v6c0 4 3 7 7 9 4-2 7-5 7-9V6l-7-3Zm-3 6h6"/>',
+  helm: '<path d="M4 13a8 8 0 0 1 16 0v5h-4l-1-3h-6l-1 3H4v-5Zm5-8v3m6-3v3"/>',
   leaf: '<path d="M5 19C-1 8 11 3 21 3c0 10-4 21-16 16Zm0 0L17 7"/>',
   spark: '<path d="m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z"/>',
   roll: '<path d="M4 12a8 8 0 1 1 3 6M4 12V5m0 7h7"/>',

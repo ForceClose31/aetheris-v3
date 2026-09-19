@@ -1,18 +1,27 @@
-import { BALANCE, ENEMIES, JOBS } from '../content/catalog';
+import { BALANCE, ENEMIES, ITEMS, JOBS } from '../content/catalog';
 import { START_POSITION } from '../content/world';
-import type { EnemyId, GameState, JobId, PlayerState } from './types';
+import type { EquipSlot, EnemyId, GameState, ItemId, JobId, PlayerState } from './types';
 
 export function newGame(): GameState {
   return {
     player: {
+      mapId: 'larkhaven',
       level: 1,
       xp: 0,
       hp: 70,
       stamina: 100,
       gold: 12,
       job: null,
-      weapon: 'wood-sword',
-      inventory: { herb: 0, tonic: 3, 'wood-sword': 1, 'iron-sword': 0 },
+      equipment: { weapon: 'wood-sword', body: null, head: null },
+      inventory: {
+        herb: 0,
+        tonic: 3,
+        'wood-sword': 1,
+        'iron-sword': 0,
+        'steel-sword': 0,
+        'padded-vest': 0,
+        'leather-cap': 0,
+      },
       position: { ...START_POSITION },
     },
     world: {
@@ -29,12 +38,39 @@ export function newGame(): GameState {
 }
 export const xpNeeded = (level: number): number => Math.round(45 + level * 19 + level ** 1.5 * 5);
 export const maxHp = (player: PlayerState): number =>
-  70 + (player.level - 1) * 9 + (player.job ? JOBS[player.job].hp : 0);
+  70 +
+  (player.level - 1) * 9 +
+  (player.job ? JOBS[player.job].hp : 0) +
+  (player.equipment.body ? (ITEMS[player.equipment.body].hp ?? 0) : 0) +
+  (player.equipment.head ? (ITEMS[player.equipment.head].hp ?? 0) : 0);
 export const attackPower = (player: PlayerState): number =>
   11 +
   (player.level - 1) * 2 +
-  (player.weapon === 'iron-sword' ? 9 : 0) +
+  (ITEMS[player.equipment.weapon].attack ?? 0) +
   (player.job ? JOBS[player.job].damage : 0);
+
+// Equipping never heals: when the maximum drops, current HP is clamped instead.
+function clampHp(player: PlayerState): void {
+  player.hp = Math.min(player.hp, maxHp(player));
+}
+
+export function equipItem(state: GameState, id: ItemId): boolean {
+  const slot = ITEMS[id]?.slot;
+  const player = state.player;
+  if (!slot || player.inventory[id] < 1 || player.equipment[slot] === id) return false;
+  player.equipment[slot] = id;
+  clampHp(player);
+  return true;
+}
+
+// The weapon slot always holds a sword; body/head return to the base appearance.
+export function unequipSlot(state: GameState, slot: EquipSlot): boolean {
+  const player = state.player;
+  if (slot === 'weapon' || player.equipment[slot] === null) return false;
+  player.equipment[slot] = null;
+  clampHp(player);
+  return true;
+}
 
 export function grantXp(player: PlayerState, amount: number): number {
   player.xp += Math.max(0, amount);
@@ -97,15 +133,22 @@ export function useTonic(player: PlayerState): boolean {
   return true;
 }
 
-export function buyItem(state: GameState, item: 'tonic' | 'iron-sword'): boolean {
-  const price = item === 'tonic' ? 8 : 35;
+// Consumables stack; equipment pieces are unique and auto-equip on purchase,
+// preserving the existing iron-sword "langsung dipakai" flow.
+export function buyItem(state: GameState, item: ItemId): boolean {
+  const price = ITEMS[item]?.price;
+  if (!price) return false;
   if (state.player.gold < price) return false;
-  if (item === 'tonic' && state.world.merchantStock < 1) return false;
-  if (item === 'iron-sword' && state.player.inventory[item] > 0) return false;
+  if (item === 'tonic') {
+    if (state.world.merchantStock < 1) return false;
+    state.world.merchantStock--;
+    state.player.inventory.tonic++;
+    return true;
+  }
+  if (ITEMS[item].slot && state.player.inventory[item] > 0) return false;
   state.player.gold -= price;
   state.player.inventory[item]++;
-  if (item === 'tonic') state.world.merchantStock--;
-  else state.player.weapon = item;
+  if (ITEMS[item].slot) equipItem(state, item);
   return true;
 }
 
@@ -119,6 +162,7 @@ export function craftTonic(state: GameState): boolean {
 }
 
 export function recoverFromDefeat(state: GameState): void {
+  state.player.mapId = 'larkhaven';
   state.player.gold = Math.floor(state.player.gold * 0.9);
   state.player.hp = maxHp(state.player);
   state.player.stamina = 100;
