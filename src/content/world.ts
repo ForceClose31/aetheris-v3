@@ -1,4 +1,4 @@
-import type { EnemyId, MapId, Point, Rect } from '../domain/types';
+import type { EnemyId, GameState, MapId, Point, Rect } from '../domain/types';
 
 // New games and defeat recovery share this location, independently of the active view.
 export const START_POSITION: Point = { x: 464, y: 690 };
@@ -13,11 +13,20 @@ const PATHS: Rect[] = [
   { x: 1338, y: 298, w: 70, h: 470 },
   { x: 1060, y: 700, w: 62, h: 385 },
 ];
-const HOUSES = [
-  { x: 250, y: 440, style: 'red', label: 'RUMAH TABIB' },
-  { x: 594, y: 433, style: 'blue', label: 'BENGKEL BORIN' },
-  { x: 272, y: 910, style: 'brown', label: 'THE WAYFARER' },
-  { x: 607, y: 880, style: 'guild', label: 'BALAI DESA' },
+export interface HouseSpec {
+  id: string;
+  x: number;
+  y: number;
+  style: string;
+  label: string;
+}
+const HOUSES: readonly HouseSpec[] = [
+  { id: 'healer', x: 250, y: 440, style: 'red', label: 'RUMAH TABIB' },
+  { id: 'forge', x: 594, y: 433, style: 'blue', label: 'BENGKEL BORIN' },
+  { id: 'inn', x: 272, y: 910, style: 'brown', label: 'THE WAYFARER' },
+  { id: 'guild', x: 607, y: 880, style: 'guild', label: 'BALAI DESA' },
+  { id: 'chapel', x: 900, y: 300, style: 'chapel', label: 'KAPEL DESA' },
+  { id: 'farm', x: 900, y: 900, style: 'farm', label: 'KEBUN & LUMBUNG' },
 ];
 const NPCS = [
   { id: 'mara', name: 'Mara', role: 'Penjaga desa', x: 500, y: 585, color: 'guard' },
@@ -76,6 +85,8 @@ interface Region {
   subtitle: string;
 }
 
+export type AreaBiome = 'village' | 'forest' | 'watch' | 'north' | 'vault' | 'interior' | 'dungeon';
+
 export interface AreaDefinition {
   props: (Point & {
     kind:
@@ -90,23 +101,51 @@ export interface AreaDefinition {
       | 'fern'
       | 'log'
       | 'rubble'
-      | 'banner';
+      | 'banner'
+      | 'seal'
+      | 'crystal'
+      | 'bed'
+      | 'table'
+      | 'shelf'
+      | 'fireplace'
+      | 'barrel'
+      | 'crate'
+      | 'rug'
+      | 'plant'
+      | 'counter'
+      | 'stall';
   })[];
   entries: Record<string, Point>;
-  exits: (Rect & { id: string; target: MapId; entry: string; label: string })[];
+  exits: (Rect & {
+    id: string;
+    target: MapId;
+    entry: string;
+    label: string;
+    gate?: { reason: string; unlocked: (state: GameState) => boolean };
+  })[];
   width: number;
   height: number;
   physicsBounds: Rect;
   spawn: Point;
   overview: Point;
   terrainKey: string;
+  biome: AreaBiome;
+  indoor: boolean;
+  walls: Rect[];
+  interactives: (Point & {
+    id: string;
+    kind: 'sign' | 'seal' | 'shelf' | 'counter' | 'table';
+    label: string;
+    text: string;
+    milestone: string;
+  })[];
   river: typeof RIVER | null;
   paths: Rect[];
-  houses: typeof HOUSES;
+  houses: readonly HouseSpec[];
   npcs: readonly (Point & { id: NpcId; name: string; role: string; color: string })[];
   herbs: typeof HERBS;
   spawns: typeof SPAWNS;
-  chests: typeof CHESTS;
+  chests: (Point & { id: string; loot?: { gold: number; tonic: number } })[];
   camp: Point | null;
   groves: Rect[];
   ruins: Rect | null;
@@ -131,6 +170,10 @@ export const LEGACY_AREA: AreaDefinition = {
   props: [],
   entries: {},
   exits: [],
+  biome: 'village',
+  indoor: false,
+  walls: [],
+  interactives: [],
   ...WORLD,
   physicsBounds: { x: 30, y: 40, w: WORLD.width - 60, h: WORLD.height - 70 },
   spawn: START_POSITION,
@@ -192,10 +235,22 @@ export function regionAt(area: AreaDefinition, x: number, y: number): Region {
 }
 
 // The split uses local coordinates; the original definition also validates v1 locations.
+// Origins only matter for the three legacy areas: they map old global saves to
+// local coordinates. Phase 7 areas were never part of the legacy world.
 export const AREA_ORIGINS: Record<MapId, Point> = {
   larkhaven: { x: 0, y: 0 },
   mossveil: { x: 824, y: 0 },
   'old-watch': { x: 1200, y: 0 },
+  'north-road': { x: 0, y: 0 },
+  'watch-vault': { x: 0, y: 0 },
+  'interior-healer': { x: 0, y: 0 },
+  'interior-forge': { x: 0, y: 0 },
+  'interior-inn': { x: 0, y: 0 },
+  'interior-guild': { x: 0, y: 0 },
+  'interior-chapel': { x: 0, y: 0 },
+  'interior-farm': { x: 0, y: 0 },
+  'watch-crypt': { x: 0, y: 0 },
+  'north-cave': { x: 0, y: 0 },
 };
 
 export function legacyMapAt({ x, y }: Point): MapId {
@@ -227,6 +282,10 @@ function splitArea(
     overview: spawn,
     entries: {},
     exits: [],
+    biome: village ? 'village' : watch ? 'watch' : 'forest',
+    indoor: false,
+    walls: [],
+    interactives: [],
     terrainKey: `terrain-${id}`,
     river: id === 'mossveil' ? { ...RIVER, x: 0 } : null,
     paths: PATHS.filter((p) => p.x + p.w > origin.x && p.x < origin.x + width && p.y < height).map(
@@ -264,12 +323,235 @@ function splitArea(
   };
 }
 
-export const AREAS: Record<MapId, AreaDefinition> = {
-  larkhaven: splitArea('larkhaven', 824, 1408, START_POSITION, 'Larkhaven'),
+// Gate predicates keep the shortcut and the archive door tied to playable state.
+const shortcutGate = {
+  reason: 'Reruntuhan menutup jalur pendek. Amankan cache di Jalur Utara lebih dulu.',
+  unlocked: (state: GameState) => state.world.opened.includes('north-road-cache'),
+};
+const vaultGate = {
+  reason: 'Pintu arsip tersegel rapat. Penjaga menara masih bertugas.',
+  unlocked: (state: GameState) => state.world.bossDefeated,
+};
+// Phase 7 area: the closed trade road north of Mossveil.
+const northRoadArea: AreaDefinition = {
+  props: [
+    { kind: 'sign', x: 420, y: 980 },
+    { kind: 'supplies', x: 480, y: 620 },
+    { kind: 'rubble', x: 520, y: 640 },
+    { kind: 'rubble', x: 350, y: 700 },
+    { kind: 'log', x: 200, y: 760 },
+    { kind: 'banner', x: 700, y: 110 },
+    { kind: 'shrub', x: 250, y: 900 },
+    { kind: 'shrub', x: 180, y: 250 },
+    { kind: 'rubble', x: 660, y: 480 },
+  ],
+  entries: {
+    'from-mossveil': { x: 430, y: 1020 },
+    'from-watch': { x: 700, y: 140 },
+  },
+  exits: [
+    {
+      id: 'north-south',
+      x: 396,
+      y: 1080,
+      w: 68,
+      h: 50,
+      target: 'mossveil',
+      entry: 'from-north',
+      label: 'Mossveil ↓',
+    },
+    {
+      id: 'north-shortcut',
+      x: 660,
+      y: 40,
+      w: 68,
+      h: 46,
+      target: 'old-watch',
+      entry: 'from-north',
+      label: '→ The Old Watch',
+      gate: shortcutGate,
+    },
+  ],
+  width: 860,
+  height: 1150,
+  physicsBounds: { x: 30, y: 40, w: 800, h: 1060 },
+  spawn: { x: 430, y: 1020 },
+  overview: { x: 430, y: 900 },
+  terrainKey: 'terrain-north-road',
+  biome: 'north',
+  indoor: false,
+  walls: [],
+  interactives: [
+    {
+      id: 'north-road-trail',
+      x: 300,
+      y: 500,
+      kind: 'sign',
+      label: 'Baca catatan jalur',
+      text: 'Catatan penjaga: "Gerbang watch tetap ditutup sampai waktunya. Jalur pendek kami kunci di gudang cache — pengurusnya tahu syaratnya."',
+      milestone: 'north-road-trail-read',
+    },
+  ],
+  river: null,
+  paths: [
+    { x: 386, y: 600, w: 88, h: 500 },
+    { x: 296, y: 560, w: 178, h: 76 },
+    { x: 250, y: 300, w: 88, h: 300 },
+    { x: 250, y: 264, w: 460, h: 76 },
+    { x: 636, y: 90, w: 88, h: 250 },
+  ],
+  houses: [],
+  npcs: [],
+  herbs: [
+    { id: 'leaf-n1', x: 520, y: 760 },
+    { id: 'leaf-n2', x: 160, y: 380 },
+  ],
+  spawns: [
+    { kind: 'slime', x: 480, y: 860 },
+    { kind: 'wolf', x: 350, y: 420 },
+    { kind: 'slime', x: 250, y: 500 },
+    { kind: 'wolf', x: 540, y: 320 },
+    { kind: 'wolf', x: 400, y: 700 },
+  ],
+  chests: [{ id: 'north-road-cache', x: 300, y: 350, loot: { gold: 25, tonic: 1 } }],
+  camp: null,
+  groves: [
+    { x: 60, y: 200, w: 140, h: 400 },
+    { x: 700, y: 600, w: 120, h: 300 },
+  ],
+  ruins: null,
+  rocks: [
+    { x: 150, y: 880 },
+    { x: 120, y: 640 },
+    { x: 170, y: 450 },
+    { x: 120, y: 300 },
+    { x: 560, y: 880 },
+    { x: 640, y: 760 },
+    { x: 680, y: 420 },
+    { x: 560, y: 180 },
+  ],
+  pillars: [],
+  well: null,
+  forestStartX: 0,
+  square: null,
+  arena: null,
+  regions: [],
+  defaultRegion: { name: 'Jalur Utara', subtitle: 'JALUR DITUTUP · WASPADA' },
+  atlas: {
+    title: 'Jalur Utara',
+    subtitle: 'ATLAS · JALUR YANG DITUTUP',
+    description: 'Peta Jalur Utara, dari Mossveil ke reruntuhan watch',
+    labels: [{ x: 430, y: 940, text: 'J A L U R  U T A R A', fontSize: 18 }],
+  },
+};
+
+// Phase 7 area: the sealed royal archive beneath The Old Watch.
+const watchVaultArea: AreaDefinition = {
+  props: [
+    { kind: 'banner', x: 200, y: 90 },
+    { kind: 'banner', x: 440, y: 90 },
+    { kind: 'rubble', x: 90, y: 320 },
+    { kind: 'rubble', x: 550, y: 380 },
+    { kind: 'lamp', x: 250, y: 470 },
+    { kind: 'lamp', x: 390, y: 470 },
+  ],
+  entries: { 'from-watch': { x: 320, y: 460 } },
+  exits: [
+    {
+      id: 'vault-south',
+      x: 286,
+      y: 512,
+      w: 68,
+      h: 36,
+      target: 'old-watch',
+      entry: 'from-vault',
+      label: 'Keluar ↑',
+    },
+  ],
+  width: 640,
+  height: 560,
+  physicsBounds: { x: 30, y: 40, w: 580, h: 490 },
+  spawn: { x: 320, y: 460 },
+  overview: { x: 320, y: 300 },
+  terrainKey: 'terrain-watch-vault',
+  biome: 'vault',
+  indoor: true,
+  walls: [],
+  interactives: [
+    {
+      id: 'vault-seal-a',
+      x: 150,
+      y: 300,
+      kind: 'seal',
+      label: 'Periksa segel barat',
+      text: 'Segel barat: ukiran "perintah jaga malam" masih hangat saat disentuh, tetapi tidak ada lagi perintah yang mengalir dari menara.',
+      milestone: 'vault-seal-a',
+    },
+    {
+      id: 'vault-seal-b',
+      x: 490,
+      y: 300,
+      kind: 'seal',
+      label: 'Periksa segel timur',
+      text: 'Segel timur: goresan kuku besi di tepinya. Seseorang — atau sesuatu — pernah mencoba keluar, bukan masuk.',
+      milestone: 'vault-seal-b',
+    },
+    {
+      id: 'vault-note',
+      x: 320,
+      y: 100,
+      kind: 'sign',
+      label: 'Baca catatan perintah',
+      text: 'Catatan perintah: "Jaga jalan, jaga arsip. Gangguan bukan serigala — automaton kita berbalik melawan. Tandai dua segel bila jaga malam gagal."',
+      milestone: 'vault-note-read',
+    },
+  ],
+  river: null,
+  paths: [
+    { x: 280, y: 100, w: 80, h: 420 },
+    { x: 100, y: 240, w: 440, h: 70 },
+  ],
+  houses: [],
+  npcs: [],
+  herbs: [],
+  spawns: [
+    { kind: 'automaton', x: 150, y: 220 },
+    { kind: 'automaton', x: 490, y: 220 },
+  ],
+  chests: [{ id: 'vault-reward', x: 320, y: 170, loot: { gold: 45, tonic: 2 } }],
+  camp: null,
+  groves: [],
+  ruins: { x: 60, y: 60, w: 520, h: 420 },
+  rocks: [],
+  pillars: [
+    { x: 120, y: 120 },
+    { x: 520, y: 120 },
+    { x: 120, y: 440 },
+    { x: 520, y: 440 },
+  ],
+  well: null,
+  forestStartX: 640,
+  square: null,
+  arena: null,
+  regions: [],
+  defaultRegion: { name: 'Ruang Arsip Penjaga', subtitle: 'ARSIP KERAJAAN · TERMURAM' },
+  atlas: {
+    title: 'Ruang Arsip Penjaga',
+    subtitle: 'ATLAS · BAWAH MENARA',
+    description: 'Arsip kerajaan yang tersegel di bawah The Old Watch',
+    labels: [{ x: 320, y: 60, text: 'RUANG ARSIP', fontSize: 14 }],
+  },
+};
+
+/* The expansion areas (interiors, crypt, cave) attach right after this literal. */
+export const AREAS = {
+  larkhaven: splitArea('larkhaven', 1040, 1408, START_POSITION, 'Larkhaven'),
   mossveil: splitArea('mossveil', 1096, 1408, { x: 135, y: 730 }, 'Mossveil Woods'),
   'old-watch': splitArea('old-watch', 720, 740, { x: 360, y: 610 }, 'The Old Watch'),
-};
-AREAS.larkhaven.entries = { 'from-mossveil': { x: 720, y: 700 } };
+  'north-road': northRoadArea,
+  'watch-vault': watchVaultArea,
+} as Record<MapId, AreaDefinition>;
+
 AREAS.larkhaven.exits = [
   {
     id: 'village-east',
@@ -384,6 +666,536 @@ AREAS['old-watch'].props = [
   { kind: 'sign', x: 304, y: 634 },
 ];
 
+// Mossveil gains the northern trailhead; the watch gains shortcut + archive doors.
+AREAS.mossveil.entries['from-north'] = { x: 930, y: 100 };
+AREAS.mossveil.exits.push({
+  id: 'forest-north',
+  x: 900,
+  y: 30,
+  w: 68,
+  h: 46,
+  target: 'north-road',
+  entry: 'from-mossveil',
+  label: '↑ Jalur Utara',
+});
+AREAS['old-watch'].entries['from-north'] = { x: 640, y: 100 };
+AREAS['old-watch'].entries['from-vault'] = { x: 640, y: 350 };
+AREAS['old-watch'].exits.push(
+  {
+    id: 'watch-north',
+    x: 600,
+    y: 30,
+    w: 68,
+    h: 46,
+    target: 'north-road',
+    entry: 'from-watch',
+    label: '↑ Jalur Utara',
+    gate: shortcutGate,
+  },
+  {
+    id: 'watch-vault',
+    x: 660,
+    y: 320,
+    w: 40,
+    h: 60,
+    target: 'watch-vault',
+    entry: 'from-watch',
+    label: 'Arsip ↓',
+    gate: vaultGate,
+  },
+);
+
+AREAS.larkhaven.entries = { 'from-mossveil': { x: 720, y: 700 } };
+// Auto wall generation for enclosed areas: every 20px cell of the bounds that
+// touches no floor rect becomes solid wall, so interiors/dungeons cannot leak.
+function wallsFor(width: number, height: number, floors: Rect[]): Rect[] {
+  const cell = 20;
+  const walls: Rect[] = [];
+  const solid = (x: number, y: number): boolean =>
+    !floors.some((f) => x + cell > f.x && x < f.x + f.w && y + cell > f.y && y < f.y + f.h);
+  for (let y = 0; y < height; y += cell)
+    for (let x = 0; x < width; x += cell) {
+      if (!solid(x, y)) continue;
+      let run = cell;
+      while (x + run < width && solid(x + run, y)) run += cell;
+      walls.push({ x, y, w: run, h: cell });
+      if (run > cell) x += run - cell;
+    }
+  return walls;
+}
+
+interface InteriorSpec {
+  id: MapId;
+  title: string;
+  subtitle: string;
+  floor: Rect;
+  furniture: (Point & {
+    kind:
+      | 'bed'
+      | 'table'
+      | 'shelf'
+      | 'fireplace'
+      | 'barrel'
+      | 'crate'
+      | 'rug'
+      | 'plant'
+      | 'counter'
+      | 'stall';
+  })[];
+  interactive: {
+    id: string;
+    x: number;
+    y: number;
+    kind: 'shelf' | 'counter' | 'table' | 'sign' | 'seal';
+    label: string;
+    text: string;
+    milestone: string;
+  };
+  backTo: MapId;
+  backEntry: string;
+}
+
+// House interiors share one authored layout pattern; furniture and lore differ.
+function interiorArea(spec: InteriorSpec): AreaDefinition {
+  const width = 480;
+  const height = 400;
+  const floors: Rect[] = [spec.floor, { x: 200, y: spec.floor.y + spec.floor.h, w: 80, h: 60 }];
+  return {
+    props: [],
+    entries: { from: { x: 240, y: spec.floor.y + spec.floor.h - 15 } },
+    exits: [
+      {
+        id: 'leave',
+        x: 210,
+        y: spec.floor.y + spec.floor.h + 10,
+        w: 60,
+        h: 50,
+        target: spec.backTo,
+        entry: spec.backEntry,
+        label: 'Keluar ↑',
+      },
+    ],
+    width,
+    height,
+    physicsBounds: { x: 20, y: 20, w: width - 40, h: height - 40 },
+    spawn: { x: 240, y: spec.floor.y + spec.floor.h - 15 },
+    overview: { x: 240, y: 180 },
+    terrainKey: 'terrain-' + spec.id,
+    biome: 'interior' as AreaBiome,
+    indoor: true,
+    walls: wallsFor(width, height, floors),
+    interactives: [spec.interactive],
+    river: null,
+    paths: floors,
+    houses: [],
+    npcs: [],
+    herbs: [],
+    spawns: [],
+    chests: [],
+    camp: null,
+    groves: [],
+    ruins: null,
+    rocks: [],
+    pillars: [],
+    well: null,
+    forestStartX: width,
+    square: null,
+    arena: null,
+    regions: [],
+    defaultRegion: { name: spec.title, subtitle: spec.subtitle },
+    atlas: {
+      title: spec.title,
+      subtitle: 'INTERIOR',
+      description: spec.title,
+      labels: [],
+    },
+  };
+}
+
+const interiors: AreaDefinition[] = [
+  interiorArea({
+    id: 'interior-healer',
+    title: 'Cottage Elian',
+    subtitle: 'RUMAH TABIB',
+    floor: { x: 40, y: 40, w: 400, h: 280 },
+    furniture: [
+      { kind: 'bed', x: 90, y: 100 },
+      { kind: 'fireplace', x: 240, y: 90 },
+      { kind: 'shelf', x: 380, y: 100 },
+      { kind: 'rug', x: 240, y: 200 },
+      { kind: 'plant', x: 70, y: 280 },
+    ],
+    interactive: {
+      id: 'healer-shelf',
+      x: 380,
+      y: 140,
+      kind: 'shelf',
+      label: 'Periksa rak obat',
+      text: 'Rak Elian tersusun rapi: daun Moonleaf kering, akar pusarnama, dan salep luka. Catatan kecil: "Yang sakit rawat, yang sehat kerja."',
+      milestone: 'lore-healer',
+    },
+    backTo: 'larkhaven',
+    backEntry: 'from-healer',
+  }),
+  interiorArea({
+    id: 'interior-forge',
+    title: 'Ruang Pandai Borin',
+    subtitle: 'DALAM BENGKEL',
+    floor: { x: 40, y: 40, w: 400, h: 280 },
+    furniture: [
+      { kind: 'fireplace', x: 240, y: 90 },
+      { kind: 'counter', x: 120, y: 110 },
+      { kind: 'barrel', x: 70, y: 280 },
+      { kind: 'crate', x: 380, y: 270 },
+      { kind: 'crate', x: 410, y: 240 },
+    ],
+    interactive: {
+      id: 'forge-anvil',
+      x: 120,
+      y: 150,
+      kind: 'counter',
+      label: 'Periksa landasan',
+      text: 'Landasan Borin berlubang bekas palu puluhan tahun. Di pinggirnya tergeletak serpih besi dari cache jalur utara — masih menunggu dicetak.',
+      milestone: 'lore-forge',
+    },
+    backTo: 'larkhaven',
+    backEntry: 'from-forge',
+  }),
+  interiorArea({
+    id: 'interior-inn',
+    title: 'Meong The Wayfarer',
+    subtitle: 'PENGINNAPAN',
+    floor: { x: 40, y: 40, w: 400, h: 280 },
+    furniture: [
+      { kind: 'counter', x: 200, y: 90 },
+      { kind: 'table', x: 100, y: 200 },
+      { kind: 'table', x: 300, y: 200 },
+      { kind: 'fireplace', x: 390, y: 90 },
+      { kind: 'barrel', x: 60, y: 90 },
+      { kind: 'barrel', x: 90, y: 100 },
+    ],
+    interactive: {
+      id: 'inn-register',
+      x: 200,
+      y: 130,
+      kind: 'counter',
+      label: 'Baca buku tamu',
+      text: 'Buku tamu The Wayfarer. Entri terakhir bertanggal tiga minggu lalu: "Pedagang utara tak jalan. Menunggu kabar. — T."',
+      milestone: 'lore-inn',
+    },
+    backTo: 'larkhaven',
+    backEntry: 'from-inn',
+  }),
+  interiorArea({
+    id: 'interior-guild',
+    title: 'Balai Guild Larkhaven',
+    subtitle: 'BALAI DESA',
+    floor: { x: 40, y: 40, w: 400, h: 280 },
+    furniture: [
+      { kind: 'table', x: 240, y: 120 },
+      { kind: 'shelf', x: 90, y: 90 },
+      { kind: 'shelf', x: 380, y: 90 },
+      { kind: 'rug', x: 240, y: 230 },
+    ],
+    interactive: {
+      id: 'guild-board',
+      x: 90,
+      y: 130,
+      kind: 'shelf',
+      label: 'Baca papan lowongan',
+      text: 'Papan guild: "Dibutuhkan pengantar hasil panen", "Dicari kucing hilang, dihadiahi ikan", dan satu lembar lama: "Pendamping jalur utara — DITUNDA".',
+      milestone: 'lore-guild',
+    },
+    backTo: 'larkhaven',
+    backEntry: 'from-guild',
+  }),
+  interiorArea({
+    id: 'interior-chapel',
+    title: 'Kapel Desa',
+    subtitle: 'KAPEL',
+    floor: { x: 40, y: 40, w: 400, h: 280 },
+    furniture: [
+      { kind: 'counter', x: 240, y: 90 },
+      { kind: 'plant', x: 80, y: 90 },
+      { kind: 'plant', x: 400, y: 90 },
+      { kind: 'rug', x: 240, y: 220 },
+    ],
+    interactive: {
+      id: 'chapel-altar',
+      x: 240,
+      y: 130,
+      kind: 'counter',
+      label: 'Berdoa sebentar',
+      text: 'Altar kapel disimpan bersih meski jarang dikunjungi. Lilin di sisinya baru separuh — seseorang masih berdoa untuk jalur utara setiap malam.',
+      milestone: 'lore-chapel',
+    },
+    backTo: 'larkhaven',
+    backEntry: 'from-chapel',
+  }),
+  interiorArea({
+    id: 'interior-farm',
+    title: 'Rumah Tani Keluarga Lem',
+    subtitle: 'LUMBUNG & RUMAH',
+    floor: { x: 40, y: 40, w: 400, h: 280 },
+    furniture: [
+      { kind: 'bed', x: 90, y: 100 },
+      { kind: 'table', x: 260, y: 150 },
+      { kind: 'crate', x: 390, y: 280 },
+      { kind: 'barrel', x: 360, y: 280 },
+      { kind: 'plant', x: 60, y: 280 },
+    ],
+    interactive: {
+      id: 'farm-table',
+      x: 260,
+      y: 190,
+      kind: 'table',
+      label: 'Lihat meja makan',
+      text: 'Meja makan dengan dua piring, satu mangkuk susu, dan surat dari anaknya di kota: "Manifest guild kami tertahan di jalur utara. Semua baik-baik saja."',
+      milestone: 'lore-farm',
+    },
+    backTo: 'larkhaven',
+    backEntry: 'from-farm',
+  }),
+];
+
+// Structured dungeon 1: the sealed crypt beneath the archive.
+const watchCryptArea: AreaDefinition = (() => {
+  const floors: Rect[] = [
+    { x: 260, y: 340, w: 120, h: 200 },
+    { x: 120, y: 200, w: 400, h: 140 },
+    { x: 120, y: 60, w: 120, h: 140 },
+    { x: 400, y: 60, w: 120, h: 140 },
+    { x: 40, y: 200, w: 80, h: 140 },
+    { x: 520, y: 200, w: 80, h: 140 },
+  ];
+  return {
+    props: [
+      { kind: 'rubble', x: 100, y: 100 },
+      { kind: 'rubble', x: 560, y: 110 },
+      { kind: 'rubble', x: 300, y: 500 },
+      { kind: 'banner', x: 300, y: 220 },
+      { kind: 'banner', x: 340, y: 220 },
+    ],
+    entries: { 'from-vault': { x: 320, y: 460 } },
+    exits: [
+      {
+        id: 'crypt-up',
+        x: 300,
+        y: 490,
+        w: 40,
+        h: 60,
+        target: 'watch-vault',
+        entry: 'from-crypt',
+        label: 'Naik ↑',
+      },
+    ],
+    width: 640,
+    height: 640,
+    physicsBounds: { x: 20, y: 20, w: 600, h: 600 },
+    spawn: { x: 320, y: 460 },
+    overview: { x: 320, y: 260 },
+    terrainKey: 'terrain-watch-crypt',
+    biome: 'dungeon' as AreaBiome,
+    indoor: true,
+    walls: wallsFor(640, 640, floors),
+    interactives: [
+      {
+        id: 'crypt-inscription-a',
+        x: 180,
+        y: 100,
+        kind: 'sign',
+        label: 'Baca prasasti sarkofagus',
+        text: '"Di sini tidur Penjaga pertama. Ia berjalan dua ratus tahun agar jalan utara tetap hidup. Ketika kalian membaca ini, perintahnya belum selesai."',
+        milestone: 'crypt-inscription-a',
+      },
+      {
+        id: 'crypt-inscription-b',
+        x: 460,
+        y: 100,
+        kind: 'sign',
+        label: 'Baca prasasti pemakaman',
+        text: '"Jangan bangunkan kami sebelum jalan aman. Jangan biarkan besi berjalan sendiri." — Goresan tangan di bawahnya menambahkan: terlambat.',
+        milestone: 'crypt-inscription-b',
+      },
+    ],
+    river: null,
+    paths: floors,
+    houses: [],
+    npcs: [],
+    herbs: [],
+    spawns: [
+      { kind: 'automaton', x: 180, y: 300 },
+      { kind: 'automaton', x: 460, y: 300 },
+      { kind: 'automaton', x: 320, y: 120 },
+    ],
+    chests: [{ id: 'crypt-cache', x: 560, y: 300, loot: { gold: 60, tonic: 2 } }],
+    camp: null,
+    groves: [],
+    ruins: null,
+    rocks: [],
+    pillars: [
+      { x: 140, y: 220 },
+      { x: 500, y: 220 },
+    ],
+    well: null,
+    forestStartX: 640,
+    square: null,
+    arena: null,
+    regions: [],
+    defaultRegion: { name: 'Katakombe Penjaga', subtitle: 'MAKAM LAMA · GELAP' },
+    atlas: {
+      title: 'Katakombe Penjaga',
+      subtitle: 'BAWAH ARSIP',
+      description: 'Makam para penjaga jalur utara',
+      labels: [],
+    },
+  };
+})();
+
+// Structured dungeon 2: the overgrown mine cave off the north road.
+const northCaveArea: AreaDefinition = (() => {
+  const floors: Rect[] = [
+    { x: 260, y: 460, w: 120, h: 120 },
+    { x: 160, y: 320, w: 320, h: 140 },
+    { x: 60, y: 180, w: 140, h: 140 },
+    { x: 420, y: 180, w: 160, h: 140 },
+    { x: 200, y: 60, w: 240, h: 120 },
+    { x: 300, y: 140, w: 80, h: 200 },
+  ];
+  return {
+    props: [
+      { kind: 'rubble', x: 100, y: 260 },
+      { kind: 'rubble', x: 520, y: 260 },
+      { kind: 'log', x: 240, y: 120 },
+      { kind: 'crystal', x: 420, y: 150 },
+      { kind: 'crystal', x: 90, y: 300 },
+    ],
+    entries: { 'from-road': { x: 320, y: 510 } },
+    exits: [
+      {
+        id: 'cave-out',
+        x: 300,
+        y: 530,
+        w: 40,
+        h: 60,
+        target: 'north-road',
+        entry: 'from-cave',
+        label: 'Keluar ↑',
+      },
+    ],
+    width: 640,
+    height: 640,
+    physicsBounds: { x: 20, y: 20, w: 600, h: 600 },
+    spawn: { x: 320, y: 510 },
+    overview: { x: 320, y: 260 },
+    terrainKey: 'terrain-north-cave',
+    biome: 'dungeon' as AreaBiome,
+    indoor: true,
+    walls: wallsFor(640, 640, floors),
+    interactives: [
+      {
+        id: 'cave-cart',
+        x: 200,
+        y: 120,
+        kind: 'sign',
+        label: 'Periksa gerbong tambang',
+        text: 'Gerbong tambang terisi bijih timah dan sebuah lentera kerajaan. Jalur ini bukan gua alam — orang bekerja di sini, lama sekali.',
+        milestone: 'cave-cart',
+      },
+    ],
+    river: null,
+    paths: floors,
+    houses: [],
+    npcs: [],
+    herbs: [],
+    spawns: [
+      { kind: 'slime', x: 120, y: 240 },
+      { kind: 'slime', x: 480, y: 240 },
+      { kind: 'wolf', x: 300, y: 120 },
+      { kind: 'wolf', x: 460, y: 180 },
+    ],
+    chests: [{ id: 'cave-cache', x: 400, y: 100, loot: { gold: 40, tonic: 2 } }],
+    camp: null,
+    groves: [],
+    ruins: null,
+    rocks: [
+      { x: 90, y: 180 },
+      { x: 540, y: 180 },
+      { x: 300, y: 200 },
+    ],
+    pillars: [],
+    well: null,
+    forestStartX: 640,
+    square: null,
+    arena: null,
+    regions: [],
+    defaultRegion: { name: 'Gua Lumut', subtitle: 'TAMBANG LAMA · GELAP' },
+    atlas: {
+      title: 'Gua Lumut',
+      subtitle: 'CABANG JALUR UTARA',
+      description: 'Tambang tua di sisi Jalur Utara',
+      labels: [],
+    },
+  };
+})();
+
+// Attach the expansion areas and the house doors that lead into every interior.
+Object.assign(AREAS, {
+  'interior-healer': interiors[0],
+  'interior-forge': interiors[1],
+  'interior-inn': interiors[2],
+  'interior-guild': interiors[3],
+  'interior-chapel': interiors[4],
+  'interior-farm': interiors[5],
+  'watch-crypt': watchCryptArea,
+  'north-cave': northCaveArea,
+});
+for (const house of HOUSES) {
+  AREAS.larkhaven.exits.push({
+    id: 'door-' + house.id,
+    x: house.x - 26,
+    y: house.y - 8,
+    w: 52,
+    h: 42,
+    target: ('interior-' + house.id) as MapId,
+    entry: 'from',
+    label: 'Masuk',
+  });
+  AREAS.larkhaven.entries['from-' + house.id] = { x: house.x, y: house.y + 42 };
+}
+AREAS['watch-vault'].exits.push({
+  id: 'vault-crypt',
+  x: 300,
+  y: 70,
+  w: 40,
+  h: 60,
+  target: 'watch-crypt',
+  entry: 'from-vault',
+  label: 'Ke katakombe ↑',
+});
+AREAS['watch-crypt'].exits.push({
+  id: 'crypt-vault',
+  x: 40,
+  y: 300,
+  w: 40,
+  h: 40,
+  target: 'watch-vault',
+  entry: 'from-crypt',
+  label: 'Arsip ↓',
+});
+AREAS['north-road'].exits.push({
+  id: 'road-cave',
+  x: 40,
+  y: 620,
+  w: 52,
+  h: 46,
+  target: 'north-cave',
+  entry: 'from-road',
+  label: 'Gua ←',
+});
+AREAS['north-road'].entries['from-cave'] = { x: 170, y: 662 };
+AREAS['watch-vault'].entries['from-crypt'] = { x: 320, y: 150 };
+
 export function contains(rect: Rect, point: Point): boolean {
   return (
     point.x >= rect.x &&
@@ -394,7 +1206,7 @@ export function contains(rect: Rect, point: Point): boolean {
 }
 
 export function areaObstacles(area: AreaDefinition): Rect[] {
-  const obstacles: Rect[] = [];
+  const obstacles: Rect[] = [...area.walls];
   const add = (x: number, y: number, w: number, h: number): void => {
     obstacles.push({ x: x - w / 2, y: y - h / 2, w, h });
   };

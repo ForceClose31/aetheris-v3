@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { areaObstacles, type AreaDefinition } from '../content/world';
+import { environmentPalette } from './terrain';
 export { safePosition } from '../content/world';
 import type { GameState, Rect } from '../domain/types';
 import { terrainTiles } from './terrain';
@@ -30,6 +31,18 @@ export function buildWorld(scene: Phaser.Scene, state: GameState, area: AreaDefi
       scene.add.image(x, y, `${area.terrainKey}/detail-${x}-${y}`).setOrigin(0).setDepth(-9.5);
   }
   for (const item of area.props) prop(item.x, item.y, `${area.terrainKey}/${item.kind}`);
+  for (const item of area.interactives) prop(item.x, item.y, `${area.terrainKey}/${item.kind}`);
+  if (area.walls.length) {
+    // Solid indoor walls render as stone/plaster blocks with a lit top edge.
+    const palette = environmentPalette(area);
+    const wallG = scene.add.graphics().setDepth(-8);
+    for (const wall of area.walls) {
+      wallG.fillStyle(Phaser.Display.Color.HexStringToColor(palette[0] ?? '#3a3f3d').color, 1);
+      wallG.fillRect(wall.x, wall.y, wall.w, wall.h);
+      wallG.fillStyle(Phaser.Display.Color.HexStringToColor(palette[2] ?? '#4d534e').color, 1);
+      wallG.fillRect(wall.x, wall.y, wall.w, 3);
+    }
+  }
 
   area.houses.forEach((house) => {
     occluders.push(prop(house.x, house.y, `${area.terrainKey}/house-${house.style}`));

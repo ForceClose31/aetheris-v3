@@ -45,6 +45,7 @@ it('keeps every interaction, entry and exit connected with player footprint clea
       ...area.npcs,
       ...area.chests,
       ...area.herbs,
+      ...area.interactives,
       ...(area.camp ? [area.camp] : []),
     ])
       expect(
@@ -65,8 +66,8 @@ it('keeps every interaction, entry and exit connected with player footprint clea
 });
 
 it('uses bounded layered tiles and distinct palettes instead of a world-sized texture', () => {
-  expect(new Set(Object.values(AREAS).map((a) => environmentPalette(a).join())).size).toBe(3);
-  expect(new Set(Object.values(AREAS).map((a) => groundOrnaments(a).join())).size).toBe(3);
+  expect(new Set(Object.values(AREAS).map((a) => environmentPalette(a).join())).size).toBe(7);
+  expect(new Set(Object.values(AREAS).map((a) => groundOrnaments(a).join())).size).toBe(7);
   for (const area of Object.values(AREAS)) {
     const tiles = terrainTiles(area);
     expect(tiles).toHaveLength(
@@ -75,5 +76,24 @@ it('uses bounded layered tiles and distinct palettes instead of a world-sized te
     expect(tiles.some((t) => t.detail)).toBe(true);
     expect(tiles.some((t) => !t.detail)).toBe(true);
   }
-  expect(new Set(AREAS.larkhaven.houses.map((h) => h.style)).size).toBe(4);
+  expect(new Set(AREAS.larkhaven.houses.map((h) => h.style)).size).toBe(6);
+});
+
+it('keeps the archive enclosed and the north road an authored outdoor identity', () => {
+  const vault = AREAS['watch-vault'];
+  expect(vault.indoor).toBe(true);
+  expect(vault.river).toBeNull();
+  expect(vault.spawns.every((spawn) => spawn.kind === 'automaton')).toBe(true);
+  expect(vault.interactives.map((interactive) => interactive.milestone)).toEqual([
+    'vault-seal-a',
+    'vault-seal-b',
+    'vault-note-read',
+  ]);
+  const north = AREAS['north-road'];
+  expect(north.indoor).toBe(false);
+  expect(north.river).toBeNull();
+  expect(north.chests.map((chest) => chest.id)).toEqual(['north-road-cache']);
+  expect(north.interactives.map((interactive) => interactive.milestone)).toEqual([
+    'north-road-trail-read',
+  ]);
 });

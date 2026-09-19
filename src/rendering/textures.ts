@@ -35,6 +35,21 @@ const ORNAMENTS: Record<
     pixel(c, '#94825a', x + 4, y + 2, 5, 2);
     pixel(c, '#6b6142', x + 8, y + 5, 4, 2);
   },
+  thistle: (c, _p, x, y) => {
+    pixel(c, '#6b7048', x + 3, y + 4, 2, 6);
+    pixel(c, '#9a7d9e', x + 1, y, 6, 4);
+    pixel(c, '#c2a4c6', x + 3, y + 1, 2, 2);
+  },
+  moss: (c, _p, x, y) => {
+    pixel(c, '#2f4a3a', x, y + 2, 12, 6);
+    pixel(c, '#3f6650', x + 2, y + 3, 8, 4);
+    pixel(c, '#5d8a70', x + 4, y + 4, 4, 2);
+  },
+  rune: (c, _p, x, y) => {
+    pixel(c, '#5c5a50', x, y + 2, 10, 2);
+    pixel(c, '#8a7448', x + 2, y + 3, 6, 1);
+    pixel(c, '#c9a35c', x + 4, y + 3, 2, 1);
+  },
   crack: (c, p, x, y) => {
     pixel(c, p[3]!, x, y, 2, 4);
     pixel(c, p[3]!, x + 2, y + 4, 2, 4);
@@ -85,6 +100,8 @@ function texture(
 }
 
 // The weapon is a separate layer (see character.ts); the base body never bakes one in.
+// Pixel-art contract: 32x34 grid, foot origin, dark rim outline, top-left light.
+// frame 0 = idle, 1/2 = walk stride, 3 = idle blink (a quiet "alive" beat).
 function person(
   c: CanvasRenderingContext2D,
   coat: string,
@@ -93,59 +110,234 @@ function person(
   dir: 'down' | 'up' | 'side',
 ): void {
   const step = frame === 1 ? 1 : frame === 2 ? -1 : 0;
-  pixel(c, '#172d2b99', 5, 28, 15, 4);
+  const blink = frame === 3;
+  const OUT = '#1c2a26';
+  const SKIN = '#e2b68c';
+  const SKIN_SH = '#c1956e';
+  const HAIR = '#4a3626';
+  const HAIR_D = '#31241a';
+  const HAIR_L = '#6d5340';
+  const PANTS = '#2b3a38';
+  const BOOT = '#55432e';
+  const BOOT_L = '#75603f';
+
+  // Two-layer ground shadow.
+  pixel(c, '#12302a3d', 3, 29, 19, 3);
+  pixel(c, '#12302a78', 5, 28, 15, 2);
+
+  // Legs with outlined boots; the stride lifts one heel per walk frame.
   if (dir === 'side') {
-    pixel(c, '#203133', 10, 22, 4, 7 + step);
-    pixel(c, '#203133', 14, 22, 4, 7 - step);
-    pixel(c, '#b19c6d', 9 + step, 28 + step, 5, 2);
-    pixel(c, '#b19c6d', 14 - step, 28 - step, 5, 2);
+    pixel(c, OUT, 9, 21, 5, 10);
+    pixel(c, PANTS, 10, 22, 3, 6 + step);
+    pixel(c, BOOT, 9, 28 + step, 6, 3);
+    pixel(c, BOOT_L, 9, 28 + step, 6, 1);
+    pixel(c, OUT, 13, 21, 5, 10);
+    pixel(c, PANTS, 14, 22, 3, 6 - step);
+    pixel(c, BOOT, 13, 28 - step, 6, 3);
+    pixel(c, BOOT_L, 13, 28 - step, 6, 1);
   } else {
-    pixel(c, '#203133', 8, 22, 4, 7 + step);
-    pixel(c, '#203133', 15, 22, 4, 7 - step);
-    pixel(c, '#b19c6d', 7, 28 + step, 5, 2);
-    pixel(c, '#b19c6d', 15, 28 - step, 5, 2);
+    pixel(c, OUT, 7, 21, 6, 10);
+    pixel(c, PANTS, 8, 22, 4, 6 + step);
+    pixel(c, BOOT, 7, 28 + step, 6, 3);
+    pixel(c, BOOT_L, 7, 28 + step, 6, 1);
+    pixel(c, OUT, 14, 21, 6, 10);
+    pixel(c, PANTS, 15, 22, 4, 6 - step);
+    pixel(c, BOOT, 14, 28 - step, 6, 3);
+    pixel(c, BOOT_L, 14, 28 - step, 6, 1);
   }
-  pixel(c, '#233c3c', 6, 12, 15, 12);
-  pixel(c, coat, 7, 12, 13, 10);
+
+  // Wanderer's scarf — the player's identity line above the collar.
+  pixel(c, '#d8c493', 6, 10, 15, 3);
+  pixel(c, '#b8a271', 6, 12, 15, 1);
+  pixel(c, '#d8c493', 9, 12, 3, 2);
+  // Torso: coat with rim, top light, hem shade, belt and buckle.
+  pixel(c, OUT, 5, 11, 17, 13);
+  pixel(c, coat, 6, 12, 15, 12);
+  pixel(c, '#ffffff24', 6, 12, 15, 2);
+  pixel(c, '#0000002b', 6, 21, 15, 2);
+
   if (dir === 'up') {
+    // Back of the head: full hair with shine and a neck fall.
+    pixel(c, HAIR_D, 7, 1, 13, 12);
+    pixel(c, HAIR, 8, 2, 11, 10);
+    pixel(c, HAIR_L, 9, 3, 9, 2);
+    pixel(c, HAIR_D, 10, 11, 8, 2);
     pixel(c, accent, 8, 13, 13, 3);
-    pixel(c, '#533c2e', 8, 3, 12, 10);
-    pixel(c, '#453b30', 8, 2, 11, 5);
-    pixel(c, '#726047', 9, 2, 8, 2);
-    pixel(c, '#5d4736', 10, 6, 9, 2);
   } else if (dir === 'side') {
-    pixel(c, accent, 12, 13, 3, 8);
-    pixel(c, '#533c2e', 8, 3, 11, 10);
-    pixel(c, '#d8ae7e', 13, 6, 8, 7);
-    pixel(c, '#f1c898', 15, 7, 6, 3);
-    pixel(c, '#453b30', 8, 2, 11, 5);
-    pixel(c, '#726047', 9, 2, 8, 2);
-    pixel(c, '#302f2a', 18, 8, 2, 2);
-    pixel(c, '#d8ae7e', 21, 9, 2, 2);
+    // Profile facing right: hair mass behind, nose, one eye, ear shade.
+    pixel(c, HAIR_D, 7, 1, 12, 12);
+    pixel(c, HAIR, 8, 2, 10, 10);
+    pixel(c, HAIR_L, 9, 3, 8, 2);
+    pixel(c, SKIN, 14, 7, 7, 7);
+    pixel(c, SKIN_SH, 14, 11, 7, 2);
+    pixel(c, SKIN, 20, 9, 2, 2);
+    pixel(c, SKIN_SH, 14, 9, 2, 2);
+    if (blink) {
+      pixel(c, SKIN_SH, 17, 9, 2, 1);
+    } else {
+      pixel(c, '#f6f2e6', 17, 8, 2, 2);
+      pixel(c, '#22303a', 18, 9, 1, 1);
+    }
   } else {
-    pixel(c, accent, 8, 13, 3, 7);
-    pixel(c, '#533c2e', 8, 3, 12, 10);
-    pixel(c, '#d8ae7e', 9, 6, 10, 7);
-    pixel(c, '#f1c898', 10, 7, 8, 3);
-    pixel(c, '#453b30', 8, 2, 11, 5);
-    pixel(c, '#726047', 9, 2, 8, 2);
-    pixel(c, '#302f2a', 17, 8, 2, 2);
+    // Front: open face, two eyes with highlights, gentle mouth.
+    pixel(c, HAIR_D, 7, 1, 13, 12);
+    pixel(c, HAIR, 8, 2, 11, 9);
+    pixel(c, HAIR_L, 9, 2, 9, 2);
+    pixel(c, HAIR, 9, 0, 3, 1);
+    pixel(c, HAIR, 15, 0, 2, 1);
+    pixel(c, SKIN, 9, 7, 10, 6);
+    pixel(c, SKIN_SH, 9, 11, 10, 2);
+    if (blink) {
+      pixel(c, SKIN_SH, 11, 9, 3, 1);
+      pixel(c, SKIN_SH, 16, 9, 3, 1);
+    } else {
+      pixel(c, '#f6f2e6', 11, 8, 3, 2);
+      pixel(c, '#f6f2e6', 16, 8, 3, 2);
+      pixel(c, '#22303a', 12, 8, 2, 2);
+      pixel(c, '#22303a', 17, 8, 2, 2);
+      pixel(c, SKIN_SH, 13, 11, 4, 1);
+    }
   }
   pixel(c, accent, 8, 22, 11, 2);
+  pixel(c, '#efe2b3', 12, 22, 2, 2);
+
+  // Arms swing opposite the stride; sleeves keep the coat, hands stay skin.
+  pixel(c, OUT, 3, 13, 6, 11);
   pixel(c, coat, 4, 14 + step, 4, 6);
-  pixel(c, '#d8ae7e', 4, 20 + step, 4, 3);
-  pixel(c, coat, 20, 14 - step, 3, 6);
-  pixel(c, '#d8ae7e', 20, 20 - step, 3, 3);
+  pixel(c, SKIN, 4, 20 + step, 4, 3);
+  pixel(c, OUT, 19, 13, 6, 11);
+  pixel(c, coat, 20, 14 - step, 4, 6);
+  pixel(c, SKIN, 20, 20 - step, 4, 3);
+}
+
+// Named villagers get authored silhouettes instead of palette swaps:
+// Mara (guard bun + breastplate), Elian (grey hair + glasses + herb pouch),
+// Borin (bald + beard + apron, broader), Sera (ponytail + guild badge).
+function villager(c: CanvasRenderingContext2D, id: 'guard' | 'healer' | 'smith' | 'trainer'): void {
+  const OUT = '#1c2a26';
+  const SKIN = '#e2b68c';
+  const SKIN_SH = '#c1956e';
+  const PANTS = '#2b3a38';
+  const BOOT = '#55432e';
+  const BOOT_L = '#75603f';
+  pixel(c, '#12302a3d', 3, 29, 19, 3);
+  pixel(c, '#12302a78', 5, 28, 15, 2);
+  pixel(c, OUT, 7, 21, 6, 10);
+  pixel(c, PANTS, 8, 22, 4, 7);
+  pixel(c, BOOT, 7, 28, 6, 3);
+  pixel(c, BOOT_L, 7, 28, 6, 1);
+  pixel(c, OUT, 14, 21, 6, 10);
+  pixel(c, PANTS, 15, 22, 4, 7);
+  pixel(c, BOOT, 14, 28, 6, 3);
+  pixel(c, BOOT_L, 14, 28, 6, 1);
+
+  if (id === 'guard') {
+    // Mara: terracotta uniform, steel breastplate, hair bun, stern brows.
+    pixel(c, OUT, 5, 11, 17, 13);
+    pixel(c, '#9d7063', 6, 12, 15, 12);
+    pixel(c, '#7a8280', 6, 12, 15, 7);
+    pixel(c, '#95a0a0', 6, 12, 15, 2);
+    pixel(c, '#5d6663', 6, 18, 15, 1);
+    pixel(c, '#c9a35c', 12, 13, 3, 3);
+    pixel(c, '#6e4a3f', 8, 22, 11, 2);
+    pixel(c, OUT, 3, 13, 6, 11);
+    pixel(c, '#9d7063', 4, 14, 4, 6);
+    pixel(c, SKIN, 4, 20, 4, 3);
+    pixel(c, OUT, 19, 13, 6, 11);
+    pixel(c, '#9d7063', 20, 14, 4, 6);
+    pixel(c, SKIN, 20, 20, 4, 3);
+    pixel(c, '#31241a', 7, 0, 13, 4);
+    pixel(c, '#4a3626', 8, 1, 11, 8);
+    pixel(c, '#4a3626', 10, 0, 7, 1);
+    pixel(c, SKIN, 9, 7, 10, 6);
+    pixel(c, SKIN_SH, 9, 11, 10, 2);
+    pixel(c, '#22303a', 11, 9, 2, 2);
+    pixel(c, '#22303a', 17, 9, 2, 2);
+    pixel(c, '#31241a', 10, 8, 4, 1);
+    pixel(c, '#31241a', 16, 8, 4, 1);
+    pixel(c, '#c1956e', 13, 11, 4, 1);
+  } else if (id === 'healer') {
+    // Elian: grey hair, round glasses, cream robe, herb pouch.
+    pixel(c, OUT, 5, 11, 17, 13);
+    pixel(c, '#d1c9a6', 6, 12, 15, 12);
+    pixel(c, '#efe9cf', 6, 12, 15, 2);
+    pixel(c, '#4f734e', 8, 22, 11, 2);
+    pixel(c, '#4f734e', 17, 20, 4, 5);
+    pixel(c, OUT, 3, 13, 6, 11);
+    pixel(c, '#d1c9a6', 4, 14, 4, 6);
+    pixel(c, SKIN, 4, 20, 4, 3);
+    pixel(c, OUT, 19, 13, 6, 11);
+    pixel(c, '#d1c9a6', 20, 14, 4, 6);
+    pixel(c, SKIN, 20, 20, 4, 3);
+    pixel(c, '#8f8f88', 7, 1, 13, 12);
+    pixel(c, '#a8a8a0', 8, 2, 11, 8);
+    pixel(c, SKIN, 9, 7, 10, 6);
+    pixel(c, SKIN_SH, 9, 11, 10, 2);
+    pixel(c, '#22303a', 11, 8, 3, 2);
+    pixel(c, '#22303a', 16, 8, 3, 2);
+    pixel(c, '#22303a', 11, 7, 8, 1);
+    pixel(c, SKIN_SH, 13, 11, 4, 1);
+  } else if (id === 'smith') {
+    // Borin: bald with a heavy beard, broader frame, leather apron.
+    pixel(c, OUT, 4, 11, 19, 13);
+    pixel(c, '#5d4a38', 5, 12, 17, 12);
+    pixel(c, '#74593f', 5, 12, 17, 2);
+    pixel(c, '#3d2f20', 7, 17, 13, 7);
+    pixel(c, '#5d4a38', 8, 18, 11, 1);
+    pixel(c, OUT, 2, 13, 7, 11);
+    pixel(c, '#5d4a38', 3, 14, 5, 6);
+    pixel(c, SKIN, 3, 20, 5, 3);
+    pixel(c, OUT, 18, 13, 7, 11);
+    pixel(c, '#5d4a38', 19, 14, 5, 6);
+    pixel(c, SKIN, 19, 20, 5, 3);
+    pixel(c, SKIN, 8, 1, 11, 6);
+    pixel(c, SKIN_SH, 8, 5, 11, 2);
+    pixel(c, '#22303a', 10, 4, 2, 2);
+    pixel(c, '#22303a', 15, 4, 2, 2);
+    pixel(c, '#5a4028', 7, 7, 13, 7);
+    pixel(c, '#6d5335', 7, 7, 13, 2);
+    pixel(c, '#5a4028', 12, 7, 3, 3);
+    pixel(c, SKIN_SH, 13, 13, 4, 1);
+  } else {
+    // Sera: slate guild trainer with ponytail and gold badge.
+    pixel(c, OUT, 5, 11, 17, 13);
+    pixel(c, '#737692', 6, 12, 15, 12);
+    pixel(c, '#8b8fae', 6, 12, 15, 2);
+    pixel(c, '#c9a35c', 9, 14, 3, 3);
+    pixel(c, '#2b3a38', 8, 22, 11, 2);
+    pixel(c, OUT, 3, 13, 6, 11);
+    pixel(c, '#737692', 4, 14, 4, 6);
+    pixel(c, SKIN, 4, 20, 4, 3);
+    pixel(c, OUT, 19, 13, 6, 11);
+    pixel(c, '#737692', 20, 14, 4, 6);
+    pixel(c, SKIN, 20, 20, 4, 3);
+    pixel(c, '#4a3626', 7, 1, 13, 12);
+    pixel(c, '#5d4a3a', 8, 2, 11, 9);
+    pixel(c, '#6d5340', 9, 3, 9, 2);
+    pixel(c, '#4a3626', 18, 6, 4, 12);
+    pixel(c, '#5d4a3a', 19, 7, 2, 9);
+    pixel(c, SKIN, 9, 7, 10, 6);
+    pixel(c, SKIN_SH, 9, 11, 10, 2);
+    pixel(c, '#f6f2e6', 11, 8, 3, 2);
+    pixel(c, '#f6f2e6', 16, 8, 3, 2);
+    pixel(c, '#22303a', 12, 8, 2, 2);
+    pixel(c, '#22303a', 17, 8, 2, 2);
+    pixel(c, '#c1956e', 13, 11, 4, 1);
+  }
 }
 
 export function createTextures(scene: Phaser.Scene, area: AreaDefinition): void {
-  for (const kind of new Set(area.props.map((prop) => prop.kind)))
+  for (const kind of new Set([
+    ...area.props.map((prop) => prop.kind),
+    ...area.interactives.map((interactive) => interactive.kind),
+  ]))
     texture(scene, `${area.terrainKey}/${kind}`, 40, 48, (c) => {
       const p = (color: string, x: number, y: number, w: number, h: number) =>
         pixel(c, color, x, y, w, h);
       const wood = '#776346',
         light = '#ad9361',
-        dark = '#35483d';
+        dark = '#35483d',
+        OUT = '#1c2a26';
       p('#203e3433', 5, 43, 30, 3);
       if (kind === 'fence' || kind === 'bench') {
         p(dark, 4, 31, 32, 5);
@@ -205,6 +397,13 @@ export function createTextures(scene: Phaser.Scene, area: AreaDefinition): void 
         p('#a8a996', 28, 32, 8, 3);
         p('#e0763f', 19, 34, 4, 2);
         p('#f2a45f', 20, 33, 2, 2);
+      } else if (kind === 'seal') {
+        p('#3a3f3d', 6, 30, 28, 12);
+        p('#6e5a3a', 8, 22, 24, 16);
+        p('#9c7a3f', 10, 24, 20, 12);
+        p('#c9a35c', 12, 26, 16, 8);
+        p('#e8c87c', 17, 28, 6, 4);
+        p('#8a6d38', 14, 31, 12, 2);
       } else if (kind === 'laundry') {
         p(wood, 3, 19, 2, 27);
         p(wood, 35, 17, 2, 29);
@@ -233,6 +432,76 @@ export function createTextures(scene: Phaser.Scene, area: AreaDefinition): void 
         }
         p('#354a45', 25, 33, 2, 8);
         p('#57714d', 6, 42, 10, 3);
+      } else if (kind === 'bed') {
+        p(OUT, 4, 6, 30, 38);
+        p('#7a5c3e', 5, 7, 28, 36);
+        p('#e8e2d0', 5, 7, 28, 10);
+        p('#9d4a3f', 5, 18, 28, 22);
+        p('#7a3a32', 5, 18, 28, 2);
+      } else if (kind === 'table') {
+        p(OUT, 4, 20, 30, 12);
+        p('#8a6d45', 5, 21, 28, 8);
+        p('#a8865a', 5, 21, 28, 2);
+        p(OUT, 6, 32, 4, 10);
+        p(OUT, 28, 32, 4, 10);
+      } else if (kind === 'shelf') {
+        p(OUT, 6, 4, 26, 40);
+        p('#7a5c3e', 7, 5, 24, 38);
+        p('#5d452e', 7, 14, 24, 2);
+        p('#5d452e', 7, 25, 24, 2);
+        p('#4f734e', 9, 8, 5, 5);
+        p('#a8865a', 16, 8, 4, 5);
+        p('#9d4a3f', 22, 16, 4, 8);
+        p('#c9a35c', 9, 28, 4, 6);
+      } else if (kind === 'fireplace') {
+        p(OUT, 4, 8, 30, 36);
+        p('#6d6d68', 5, 9, 28, 34);
+        p('#8a8a84', 5, 9, 28, 3);
+        p('#1c1512', 10, 20, 18, 20);
+        p('#e0763f', 13, 26, 12, 10);
+        p('#f2a45f', 15, 28, 8, 6);
+        p('#ffd98a', 17, 30, 4, 4);
+      } else if (kind === 'barrel') {
+        p(OUT, 8, 18, 22, 26);
+        p('#7a5c3e', 9, 19, 20, 24);
+        p('#a8865a', 9, 19, 20, 3);
+        p('#4a3b2e', 8, 26, 22, 3);
+        p('#4a3b2e', 8, 36, 22, 3);
+      } else if (kind === 'crate') {
+        p(OUT, 6, 16, 26, 28);
+        p('#8a6d45', 7, 17, 24, 26);
+        p('#6d5535', 7, 17, 24, 3);
+        p('#a8865a', 8, 28, 22, 2);
+      } else if (kind === 'rug') {
+        p('#9d4a3f', 6, 20, 26, 18);
+        p('#b8645a', 8, 22, 22, 14);
+        p('#e8d9a8', 10, 26, 18, 2);
+      } else if (kind === 'plant') {
+        p(OUT, 12, 30, 14, 12);
+        p('#8a6d45', 13, 31, 12, 10);
+        p('#4f734e', 8, 16, 20, 16);
+        p('#6b8f5e', 10, 12, 16, 10);
+        p('#93b08a', 14, 10, 8, 6);
+      } else if (kind === 'counter') {
+        p(OUT, 4, 14, 30, 30);
+        p('#7a5c3e', 5, 15, 28, 26);
+        p('#8a6d45', 5, 15, 28, 4);
+        p('#5d452e', 5, 24, 28, 2);
+        p('#c9a35c', 14, 18, 6, 3);
+      } else if (kind === 'stall') {
+        p(OUT, 4, 8, 32, 6);
+        p('#9d4a3f', 5, 9, 30, 4);
+        p('#e8d9a8', 12, 9, 6, 4);
+        p(OUT, 5, 14, 4, 30);
+        p(OUT, 29, 14, 4, 30);
+        p('#8a6d45', 6, 16, 26, 18);
+        p('#c9a35c', 8, 20, 8, 4);
+      } else if (kind === 'crystal') {
+        p(OUT, 8, 18, 22, 24);
+        p('#2f4a4a', 9, 19, 20, 22);
+        p('#7fd0c2', 12, 10, 6, 22);
+        p('#a8e8dc', 13, 12, 3, 16);
+        p('#4d8a80', 19, 14, 5, 20);
       } else {
         for (let i = 0; i < 7; i++) {
           const x = 5 + i * 4,
@@ -268,45 +537,66 @@ export function createTextures(scene: Phaser.Scene, area: AreaDefinition): void 
   for (const tile of terrainTiles(area).filter((tile) => tile.detail))
     texture(scene, `${area.terrainKey}/detail-${tile.x}-${tile.y}`, TILE_SIZE, TILE_SIZE, (c) => {
       c.translate(-tile.x, -tile.y);
-      area.paths.forEach(({ x, y, w, h }) => {
-        // Irregular shoulders follow the long axis; the traversable center stays open.
-        const horizontal = w > h;
-        const length = horizontal ? w : h;
-        const width = horizontal ? h : w;
-        for (let along = -6; along < length + 6; along += 6) {
-          const taper = along < 6 || along > length - 12 ? Math.min(10, width / 5) : 0;
-          const bend = Math.round(Math.sin(along / 63 + x + y) * 4) * 2;
-          const fringe = Math.floor(hash(Math.floor(along / 18), x + y) * 3) * 2;
-          const across = bend + taper;
-          if (horizontal) {
-            pixel(
-              c,
-              palette[5]!,
-              x + along,
-              y + across - 5 - fringe,
-              6,
-              width - taper * 2 + 10 + fringe,
-            );
-            pixel(c, palette[4]!, x + along, y + across, 6, width - taper * 2);
-          } else {
-            pixel(
-              c,
-              palette[5]!,
-              x + across - 5 - fringe,
-              y + along,
-              width - taper * 2 + 10 + fringe,
-              6,
-            );
-            pixel(c, palette[4]!, x + across, y + along, width - taper * 2, 6);
+      if (area.biome === 'interior') {
+        // Interiors: warm plank floors with seams; walls are drawn separately.
+        for (const { x, y, w, h } of area.paths) {
+          for (let py = y; py < y + h; py += 8) {
+            pixel(c, '#8a6d45', x, py, w, 7);
+            pixel(c, '#6d5535', x, py + 7, w, 1);
+            for (let sx = x + ((py / 8) % 2) * 16; sx < x + w; sx += 32)
+              pixel(c, '#6d5535', sx, py, 1, 7);
           }
         }
-        for (let py = y + 4; py < y + h - 4; py += 14)
-          for (let px = x + 4; px < x + w - 4; px += 18) {
-            const n = hash(px, py);
-            if (n > 0.6) pixel(c, palette[5]!, px + Math.floor(n * 4) * 2, py, 4, 2);
-            if (n > 0.94) pixel(c, '#b7ac84', px, py - 2, 6, 2);
+      }
+      if (area.biome === 'dungeon') {
+        // Dungeon floors: cold stone slightly lighter than the surrounding void.
+        const dPal = environmentPalette(area);
+        for (const { x, y, w, h } of area.paths) {
+          pixel(c, dPal[1]!, x, y, w, h);
+          for (let sy = y; sy < y + h; sy += 20) pixel(c, dPal[3]!, x, sy, w, 1);
+          for (let sx = x; sx < x + w; sx += 26) pixel(c, dPal[3]!, sx, y, 1, h);
+        }
+      }
+      if (area.biome !== 'interior' && area.biome !== 'dungeon')
+        area.paths.forEach(({ x, y, w, h }) => {
+          // Irregular shoulders follow the long axis; the traversable center stays open.
+          const horizontal = w > h;
+          const length = horizontal ? w : h;
+          const width = horizontal ? h : w;
+          for (let along = -6; along < length + 6; along += 6) {
+            const taper = along < 6 || along > length - 12 ? Math.min(10, width / 5) : 0;
+            const bend = Math.round(Math.sin(along / 63 + x + y) * 4) * 2;
+            const fringe = Math.floor(hash(Math.floor(along / 18), x + y) * 3) * 2;
+            const across = bend + taper;
+            if (horizontal) {
+              pixel(
+                c,
+                palette[5]!,
+                x + along,
+                y + across - 5 - fringe,
+                6,
+                width - taper * 2 + 10 + fringe,
+              );
+              pixel(c, palette[4]!, x + along, y + across, 6, width - taper * 2);
+            } else {
+              pixel(
+                c,
+                palette[5]!,
+                x + across - 5 - fringe,
+                y + along,
+                width - taper * 2 + 10 + fringe,
+                6,
+              );
+              pixel(c, palette[4]!, x + across, y + along, width - taper * 2, 6);
+            }
           }
-      });
+          for (let py = y + 4; py < y + h - 4; py += 14)
+            for (let px = x + 4; px < x + w - 4; px += 18) {
+              const n = hash(px, py);
+              if (n > 0.6) pixel(c, palette[5]!, px + Math.floor(n * 4) * 2, py, 4, 2);
+              if (n > 0.94) pixel(c, '#b7ac84', px, py - 2, 6, 2);
+            }
+        });
       // Riverbanks, authored crossing, and stepping stone village square.
       if (area.river) {
         pixel(c, '#294f47', area.river.x - 14, 0, area.river.width + 28, area.height);
@@ -390,19 +680,14 @@ export function createTextures(scene: Phaser.Scene, area: AreaDefinition): void 
           }
       });
     });
-  // Directional player frames: idle 0, walk 1/2; side view mirrors for left/right.
+  // Directional player frames: idle 0, walk 1/2, blink 3; side view mirrors.
   for (const dir of ['down', 'up', 'side'] as const)
-    for (let frame = 0; frame < 3; frame++)
+    for (let frame = 0; frame < 4; frame++)
       texture(scene, `player-${dir}-${frame}`, 32, 34, (c) =>
         person(c, '#6c9ca0', '#d4c193', frame, dir),
       );
-  for (const [key, coat, accent] of [
-    ['guard', '#9d7063', '#d1b779'],
-    ['healer', '#d1c9a6', '#719982'],
-    ['smith', '#a37b4f', '#4b4d43'],
-    ['trainer', '#737692', '#c0b79c'],
-  ])
-    texture(scene, key!, 32, 34, (c) => person(c, coat!, accent!, 0, 'down'));
+  for (const key of ['guard', 'healer', 'smith', 'trainer'] as const)
+    texture(scene, key, 32, 34, (c) => villager(c, key));
   for (const [id, blade, spine, edge, guard, grip, pommel] of [
     ['wood-sword', '#a3805a', '#c2a06f', '#7c5f43', '#5d4a35', '#6b543c', '#8a6b4a'],
     ['iron-sword', '#cfd6d2', '#eef2ec', '#8f9a97', '#5b5346', '#4a3b2e', '#c9a35c'],
@@ -502,6 +787,8 @@ export function createTextures(scene: Phaser.Scene, area: AreaDefinition): void 
     ['blue', '#4d7478', '#76948c'],
     ['brown', '#71674c', '#958b63'],
     ['guild', '#486b69', '#79978a'],
+    ['chapel', '#6d6d68', '#8a8a84'],
+    ['farm', '#8a7448', '#a8905c'],
   ]) {
     if (!area.houses.some((house) => house.style === name)) continue;
     texture(scene, `${area.terrainKey}/house-${name}`, 108, 108, (c) => {
@@ -523,9 +810,9 @@ export function createTextures(scene: Phaser.Scene, area: AreaDefinition): void 
       pixel(c, '#5b503b', 3, 49, 102, 9);
       for (let y = 10; y < 52; y += 6) {
         const inset =
-          name === 'brown'
+          name === 'brown' || name === 'farm'
             ? Math.floor((52 - y) * 0.23)
-            : name === 'guild'
+            : name === 'guild' || name === 'chapel'
               ? Math.floor((52 - y) / 12) * 7
               : Math.floor((52 - y) * 0.54);
         pixel(c, roof!, inset, y, 108 - inset * 2, 6);
@@ -560,6 +847,22 @@ export function createTextures(scene: Phaser.Scene, area: AreaDefinition): void 
         pixel(c, '#443e30', 99, 73, 3, 28);
         for (let x = 4; x < 103; x += 11) pixel(c, x % 2 ? '#788777' : '#c2b68b', x, 64, 11, 12);
         pixel(c, '#d1bb8b', 4, 76, 99, 3);
+      }
+      if (name === 'chapel') {
+        // Tower with a bell arch on the left side.
+        pixel(c, '#3d3d38', 12, 0, 24, 52);
+        pixel(c, '#7a7a74', 13, 1, 22, 50);
+        pixel(c, '#93938c', 13, 1, 8, 50);
+        pixel(c, '#1c1512', 18, 8, 12, 14);
+        pixel(c, '#c9a35c', 22, 10, 6, 8);
+        pixel(c, '#3d3d38', 12, 44, 24, 4);
+      }
+      if (name === 'farm') {
+        // Thatch texture rows and hay bales beside the door.
+        for (let ry = 12; ry < 50; ry += 5)
+          pixel(c, '#6d5a34', 12 + ((ry / 5) % 2) * 6, ry, 84 - ((ry / 5) % 2) * 12, 2);
+        pixel(c, '#c9b06a', 88, 70, 14, 14);
+        pixel(c, '#a8905c', 88, 70, 14, 2);
       }
       if (name === 'guild') {
         pixel(c, '#a3ac91', 47, 17, 15, 25);
@@ -621,6 +924,25 @@ export function createTextures(scene: Phaser.Scene, area: AreaDefinition): void 
     pixel(c, '#a4ac8a', 48, 24, 8, 6);
     pixel(c, '#52724a', 17, 0, 15, 5);
     pixel(c, '#719050', 2, 20, 10, 6);
+  });
+  texture(scene, 'automaton', 40, 40, (c) => {
+    pixel(c, '#17242a88', 6, 33, 28, 5);
+    pixel(c, '#2b3438', 8, 26, 24, 8);
+    pixel(c, '#465256', 10, 27, 20, 5);
+    pixel(c, '#5d4a33', 9, 10, 22, 17);
+    pixel(c, '#8a6d45', 11, 12, 18, 13);
+    pixel(c, '#a8865a', 11, 12, 18, 3);
+    pixel(c, '#3f3222', 13, 16, 2, 2);
+    pixel(c, '#3f3222', 25, 16, 2, 2);
+    pixel(c, '#2f3a3d', 15, 17, 10, 7);
+    pixel(c, '#7fd0c2', 16, 18, 8, 5);
+    pixel(c, '#d8fff4', 18, 19, 4, 3);
+    pixel(c, '#5d4a33', 14, 2, 12, 8);
+    pixel(c, '#8a6d45', 15, 3, 10, 6);
+    pixel(c, '#f0c46a', 18, 4, 5, 4);
+    pixel(c, '#fff3c4', 19, 5, 3, 2);
+    pixel(c, '#465256', 31, 14, 5, 12);
+    pixel(c, '#6e7d82', 31, 14, 3, 12);
   });
   texture(scene, 'herb', 20, 24, (c) => {
     pixel(c, '#284b35', 2, 19, 16, 4);

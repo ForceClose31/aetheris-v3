@@ -23,6 +23,8 @@ export interface CharacterPose {
   attack: number;
   duration: number;
   combo: number;
+  moving: boolean;
+  time: number;
 }
 
 export interface CharacterLayers {

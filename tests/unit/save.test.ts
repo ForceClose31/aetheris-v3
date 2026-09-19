@@ -121,8 +121,31 @@ describe('versioned browser saves', () => {
       'padded-vest': 0,
       'leather-cap': 0,
     });
+    expect(migrated.world.milestones).toEqual([]);
+    expect(migrated.world.kills).toEqual({ slime: 5, wolf: 1, golem: 0, automaton: 0 });
     expect(store.write(1, migrated).ok).toBe(true);
     expect(store.read(1)!.state).toEqual(migrated);
+  });
+  it('migrates version 3 saves and grandfathers the watch discovery from the boss flag', () => {
+    const record = {
+      version: 3,
+      savedAt: '2026-09-19T00:00:00.000Z',
+      state: newGame(),
+    };
+    record.state.world.bossDefeated = true;
+    delete (record.state.world as unknown as Record<string, unknown>).milestones;
+    let stored = JSON.stringify(record);
+    const store = new SaveStore({
+      getItem: () => stored,
+      setItem: (_key, value) => {
+        stored = value;
+      },
+    });
+    const loaded = store.read(1)!;
+    expect(loaded.version).toBe(5);
+    expect(loaded.state.world.milestones).toEqual(['found-old-watch']);
+    expect(store.write(1, loaded.state).ok).toBe(true);
+    expect(store.read(1)!.state).toEqual(loaded.state);
   });
   it('rejects corrupt or wrong-slot equipment ids instead of half-valid states', () => {
     const migrated = newGame();

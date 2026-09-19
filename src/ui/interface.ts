@@ -1,5 +1,6 @@
 import { ITEMS, JOBS } from '../content/catalog';
 import { regionAt, type AreaDefinition } from '../content/world';
+import { currentObjective, objectiveSummary, type ObjectiveProgress } from '../domain/objectives';
 import { attackPower, equipItem, maxHp, unequipSlot, xpNeeded } from '../domain/progression';
 import type { GameState, ItemId } from '../domain/types';
 import type { GameAudio } from '../platform/audio';
@@ -7,6 +8,7 @@ import type { Action, InputController } from '../platform/input';
 import type { SaveStore } from '../platform/save';
 import { icon } from './icons';
 import { drawMap } from './map';
+import { hasPortrait, portraitDataUrl } from '../rendering/portraits';
 
 export interface InterfaceHooks {
   start: (state: GameState | null, slot: number) => void;
@@ -210,12 +212,22 @@ export class GameInterface {
     else if (this.started) this.openPanel('pause');
   }
 
-  dialog(title: string, eyebrow: string, body: string, actions: DialogAction[] = []): void {
+  dialog(
+    title: string,
+    eyebrow: string,
+    body: string,
+    actions: DialogAction[] = [],
+    portrait?: string,
+  ): void {
     if (this.modal.hidden)
       this.lastFocus =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.modal.hidden = false;
-    this.modal.firstElementChild!.innerHTML = `<div class="modal-top"><span class="eyebrow">${eyebrow}</span><button class="close-button" aria-label="Tutup">×</button></div><h2 id="modal-title">${title}</h2><div class="modal-body">${body}</div><div class="modal-actions"></div>`;
+    const content =
+      portrait && hasPortrait(portrait)
+        ? `<div class="dialog-row"><img class="dialog-portrait" src="${portraitDataUrl(portrait)}" alt="${title}" width="84" height="84"><div class="dialog-text">${body}</div></div>`
+        : body;
+    this.modal.firstElementChild!.innerHTML = `<div class="modal-top"><span class="eyebrow">${eyebrow}</span><button class="close-button" aria-label="Tutup">×</button></div><h2 id="modal-title">${title}</h2><div class="modal-body">${content}</div><div class="modal-actions"></div>`;
     this.modal.querySelector('.close-button')!.addEventListener('click', () => this.close());
     const bar = this.modal.querySelector('.modal-actions')!;
     actions.forEach((action) => {
@@ -266,16 +278,45 @@ export class GameInterface {
 
   private journal(): void {
     const state = this.state!;
-    const q = state.world.quests;
-    const supplies = q.supplies === 'complete';
-    const sentinel = q.sentinel === 'complete';
-    this.dialog(
-      'Catatan seorang pengelana',
-      'JURNAL · CHAPTER I',
-      `
-      <article class="quest-entry"><span class="tag">${supplies ? 'SELESAI' : 'CERITA UTAMA'}</span><h3>Hal-hal kecil yang berarti</h3><p>Persediaan tabib mulai menipis. Mara membutuhkan seseorang untuk membersihkan jalan menuju hutan.</p><ul><li>${q.supplies === 'available' ? '○' : '✓'} Bicara dengan Mara di dekat sumur desa.</li><li>${state.world.questKills >= 3 ? '✓' : '○'} Kalahkan Moss Slime setelah menerima tugas (${Math.min(3, state.world.questKills)}/3).</li><li>${supplies || state.player.inventory.herb >= 3 ? '✓' : '○'} Bawakan 3 Moonleaf untuk Mara.</li></ul><div class="reward">IMBALAN <span>30 gold · 85 XP · 2 tonik</span></div></article>
-      <article class="quest-entry ${q.sentinel === 'available' ? 'dimmed' : ''}"><span class="tag">${sentinel ? 'SELESAI' : q.sentinel === 'available' ? 'BELUM TERBUKA' : 'CERITA UTAMA'}</span><h3>Yang terbangun di utara</h3><p>${q.sentinel === 'available' ? 'Bantu warga Larkhaven untuk melanjutkan cerita.' : 'Sebuah penjaga batu bergerak lagi di The Old Watch. Hindari lingkaran serangannya, cari kesempatan di antara hantaman, lalu laporkan pada Mara.'}</p><div class="reward">IMBALAN <span>100 gold · 150 XP</span></div></article>`,
-    );
+    const entries = objectiveSummary(state);
+    const main = entries.filter((entry) => entry.main);
+    const optional = entries.filter((entry) => !entry.main);
+    const mark = (entry: ObjectiveProgress): string =>
+      entry.done ? '✓' : entry.playable ? '○' : '–';
+    const descriptions: Record<string, string> = {
+      'Hal-hal kecil yang berarti':
+        'Persediaan tabib mulai menipis. Mara membutuhkan seseorang untuk membersihkan jalan menuju hutan.',
+      'Jejak di jalan yang ditutup':
+        'Jalan utara ditutup dan penjaga belum kembali. Mara meminta jawaban, bukan dugaan.',
+      'Yang terbangun di utara':
+        'Sebuah penjaga batu bergerak lagi di The Old Watch. Hindari lingkaran serangannya, cari kesempatan di antara hantaman, lalu laporkan pada Mara.',
+      'Perintah yang tertinggal':
+        'Cap kerajaan menunjuk ke bawah. Arsip di bawah watch menyimpan perintah yang belum selesai.',
+      'Jalur untuk esok hari':
+        'Bukti telah lengkap. Bawa semuanya kepada Mara — jalur lokal bisa aman kembali.',
+    };
+    const groups: { title: string; entries: ObjectiveProgress[] }[] = [];
+    for (const entry of main) {
+      const group = groups.find((candidate) => candidate.title === entry.title);
+      if (group) group.entries.push(entry);
+      else groups.push({ title: entry.title, entries: [entry] });
+    }
+    let previousDone = true;
+    const articles = groups
+      .map((group) => {
+        const done = group.entries.every((entry) => entry.done);
+        const unlocked = previousDone || done;
+        previousDone = done;
+        const tag = done ? 'SELESAI' : unlocked ? 'CERITA UTAMA' : 'BELUM TERBUKA';
+        return `<article class="quest-entry ${unlocked || done ? '' : 'dimmed'}"><span class="tag">${tag}</span><h3>${group.title}</h3><p>${descriptions[group.title] ?? ''}</p><ul>${group.entries
+          .map((entry) => `<li>${mark(entry)} ${entry.detail.replace('\n', ' · ')}</li>`)
+          .join('')}</ul></article>`;
+      })
+      .join('');
+    const exploration = `<article class="quest-entry dimmed"><span class="tag">${optional.every((entry) => entry.done) ? 'TERJELAJAHI' : 'EKSPLORASI'}</span><h3>Jelajahi Aetheris</h3><ul>${optional
+      .map((entry) => `<li>${mark(entry)} ${entry.detail}</li>`)
+      .join('')}</ul></article>`;
+    this.dialog('Catatan seorang pengelana', 'JURNAL · CHAPTER I', articles + exploration);
   }
 
   private inventory(): void {
@@ -333,6 +374,7 @@ export class GameInterface {
       'INVENTARIS & KARAKTER',
       `<div class="stat-grid"><div><small>LEVEL</small><b>${p.level}</b></div><div><small>JOB</small><b>${p.job ? JOBS[p.job].name : 'Villager'}</b></div><div><small>SERANGAN</small><b>${attackPower(p)}</b></div><div><small>HP MAKS</small><b>${maxHp(p)}</b></div><div><small>GOLD</small><b>${p.gold}</b></div></div><div class="item-list">${items.map((id) => `<article class="item-row"><div class="item-icon">${iconFor(id)}</div><div><h3>${ITEMS[id].name} ${equipped(id) ? '<span class="tag">DIPAKAI</span>' : ''}</h3><p>${ITEMS[id].description}</p><small>${ITEMS[id].rarity}</small></div><b>×${p.inventory[id]}</b></article>`).join('')}</div>`,
       actions,
+      'pengelana',
     );
   }
 
@@ -434,26 +476,11 @@ export class GameInterface {
     text('skill-name', p.job ? JOBS[p.job].skill : 'Lv. 10');
     text('skill-cooldown', details.skillCooldown > 0 ? `${Math.ceil(details.skillCooldown)}s` : '');
     text('roll-cooldown', details.rollCooldown > 0 ? '·' : '');
-    const q = state.world.quests;
-    text(
-      'quest-title',
-      q.supplies !== 'complete'
-        ? 'Hal-hal kecil yang berarti'
-        : q.sentinel !== 'complete'
-          ? 'Yang terbangun di utara'
-          : 'Rumah, untuk sementara',
-    );
+    const current = currentObjective(state);
+    text('quest-title', current?.title ?? 'Rumah, untuk sementara');
     text(
       'quest-body',
-      q.supplies === 'available'
-        ? 'Bicaralah dengan Mara di dekat sumur desa.'
-        : q.supplies === 'active'
-          ? `Moss Slime ${Math.min(3, state.world.questKills)}/3 · Moonleaf ${Math.min(3, p.inventory.herb)}/3\nKembali ke Mara setelah terkumpul.`
-          : q.sentinel === 'active'
-            ? state.world.bossDefeated
-              ? 'Penjaga telah tumbang. Kembali ke Mara.'
-              : 'Selidiki The Old Watch di utara Mossveil.'
-            : 'Larkhaven aman. Latih dirimu dan temui Sera pada level 10.',
+      current?.detail ?? 'Larkhaven aman. Latih dirimu dan temui Sera pada level 10.',
     );
     const interaction = this.hudRefs.get('interaction')!;
     interaction.hidden = !details.nearby;

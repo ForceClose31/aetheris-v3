@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { BALANCE, ENEMIES } from '../content/catalog';
 import type { AreaDefinition } from '../content/world';
 import { damageRoll, inAttackArc } from '../domain/combat';
+import { watchRouteOpen } from '../domain/objectives';
 import { attackPower, defeatEnemy } from '../domain/progression';
 import type { EnemyDefinition, GameState, Point } from '../domain/types';
 import type { Effects } from './effects';
@@ -56,9 +57,7 @@ export class EnemySystem {
         );
       scene.physics.add.collider(sprite, solids);
       const waiting = this.respawns[spawnId] !== undefined;
-      const hiddenBoss =
-        spawn.kind === 'golem' &&
-        (state.world.bossDefeated || state.world.quests.sentinel === 'available');
+      const hiddenBoss = spawn.kind === 'golem' && !watchRouteOpen(state);
       if (waiting || hiddenBoss) {
         sprite.setVisible(false).setActive(false);
         sprite.body!.enable = false;
@@ -94,10 +93,7 @@ export class EnemySystem {
         if (actor.deathTimer === 0) sprite.setVisible(false);
         continue;
       }
-      if (
-        definition.id === 'golem' &&
-        (this.state.world.quests.sentinel === 'available' || this.state.world.bossDefeated)
-      ) {
+      if (definition.id === 'golem' && !watchRouteOpen(this.state)) {
         sprite.setVisible(false).setActive(false);
         sprite.body!.enable = false;
         continue;
@@ -152,7 +148,7 @@ export class EnemySystem {
           this.effects.floating(
             actor.target.x,
             actor.target.y,
-            definition.id === 'golem' ? 'SLAM' : '!',
+            definition.id === 'golem' ? 'SLAM' : definition.id === 'automaton' ? 'BURST' : '!',
             '#e6a18a',
           );
           if (
@@ -161,14 +157,29 @@ export class EnemySystem {
           )
             this.hooks.damage(definition.damage);
           actor.cooldown =
-            definition.id === 'golem' ? (actor.hp < definition.hp / 2 ? 0.9 : 1.7) : 1.2;
+            definition.id === 'golem'
+              ? actor.hp < definition.hp / 2
+                ? 0.9
+                : 1.7
+              : definition.id === 'automaton'
+                ? 1.6
+                : 1.2;
         }
       } else if (distance < definition.aggro && homeDistance < 300) {
-        const attackRange = definition.id === 'golem' ? 120 : 45;
+        const attackRange =
+          definition.id === 'golem' ? 120 : definition.id === 'automaton' ? 52 : 45;
         if (distance < attackRange && actor.cooldown <= 0) {
-          actor.windup = definition.id === 'golem' ? 1.05 : 0.5;
+          actor.windup =
+            definition.id === 'golem' ? 1.05 : definition.id === 'automaton' ? 0.75 : 0.5;
           actor.target = { x: player.x, y: player.y };
-          actor.radius = definition.id === 'golem' ? (actor.hp < definition.hp / 2 ? 95 : 76) : 34;
+          actor.radius =
+            definition.id === 'golem'
+              ? actor.hp < definition.hp / 2
+                ? 95
+                : 76
+              : definition.id === 'automaton'
+                ? 46
+                : 34;
           sprite.setVelocity(0);
         } else if (distance > 30) {
           const speed =

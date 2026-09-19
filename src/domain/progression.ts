@@ -1,4 +1,5 @@
 import { BALANCE, ENEMIES, ITEMS, JOBS } from '../content/catalog';
+import { recordMilestone } from './objectives';
 import { START_POSITION } from '../content/world';
 import type { EquipSlot, EnemyId, GameState, ItemId, JobId, PlayerState } from './types';
 
@@ -26,9 +27,10 @@ export function newGame(): GameState {
     },
     world: {
       seconds: 0,
-      kills: { slime: 0, wolf: 0, golem: 0 },
+      kills: { slime: 0, wolf: 0, golem: 0, automaton: 0 },
       gathered: [],
       opened: [],
+      milestones: [],
       quests: { supplies: 'available', sentinel: 'available' },
       questKills: 0,
       bossDefeated: false,
@@ -112,9 +114,12 @@ export function completeSupplies(state: GameState): boolean {
   state.player.inventory.herb -= 3;
   state.player.gold += 30;
   state.player.inventory.tonic += 2;
-  grantXp(state.player, 85);
+  grantXp(state.player, 100);
   state.world.quests.supplies = 'complete';
   state.world.quests.sentinel = 'active';
+  // Marks that THIS save passed supplies under the integrated campaign; saves
+  // without it are grandfathered out of the investigation chain.
+  recordMilestone(state, 'supplies-reported');
   return true;
 }
 
@@ -122,7 +127,25 @@ export function completeSentinel(state: GameState): boolean {
   if (state.world.quests.sentinel !== 'active' || !state.world.bossDefeated) return false;
   state.world.quests.sentinel = 'complete';
   state.player.gold += 100;
-  grantXp(state.player, 150);
+  grantXp(state.player, 200);
+  return true;
+}
+
+// Campaign resolution: Mara receives the archive findings. Requires the warden
+// report (sentinel complete) and all vault evidence; the reward is granted once.
+export function reportVaultFindings(state: GameState): boolean {
+  const w = state.world;
+  const evidence =
+    w.milestones.includes('vault-seal-a') &&
+    w.milestones.includes('vault-seal-b') &&
+    w.milestones.includes('vault-note-read');
+  if (w.quests.sentinel !== 'complete' || !evidence) return false;
+  if (!recordMilestone(state, 'campaign-complete')) return false;
+  state.player.gold += 80;
+  state.player.inventory.tonic += 2;
+  grantXp(state.player, 200);
+  // The safe road lets supplies flow again: Borin restocks once, capped at 8.
+  state.world.merchantStock = Math.min(8, state.world.merchantStock + 4);
   return true;
 }
 

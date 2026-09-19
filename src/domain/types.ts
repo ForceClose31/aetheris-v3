@@ -1,7 +1,20 @@
 export type JobId =
   'warrior' | 'knight' | 'mage' | 'archer' | 'assassin' | 'priest' | 'monk' | 'summoner';
-export type EnemyId = 'slime' | 'wolf' | 'golem';
-export type MapId = 'larkhaven' | 'mossveil' | 'old-watch';
+export type EnemyId = 'slime' | 'wolf' | 'golem' | 'automaton';
+export type MapId =
+  | 'larkhaven'
+  | 'mossveil'
+  | 'old-watch'
+  | 'north-road'
+  | 'watch-vault'
+  | 'interior-healer'
+  | 'interior-forge'
+  | 'interior-inn'
+  | 'interior-guild'
+  | 'interior-chapel'
+  | 'interior-farm'
+  | 'watch-crypt'
+  | 'north-cave';
 export type QuestStage = 'available' | 'active' | 'complete';
 export type ItemId =
   'herb' | 'tonic' | 'wood-sword' | 'iron-sword' | 'steel-sword' | 'padded-vest' | 'leather-cap';
@@ -32,6 +45,7 @@ export interface WorldState {
   kills: Record<EnemyId, number>;
   gathered: string[];
   opened: string[];
+  milestones: string[];
   quests: { supplies: QuestStage; sentinel: QuestStage };
   questKills: number;
   bossDefeated: boolean;

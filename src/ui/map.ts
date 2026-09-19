@@ -1,3 +1,4 @@
+import { objectiveSummary } from '../domain/objectives';
 import type { AreaDefinition } from '../content/world';
 import type { GameState } from '../domain/types';
 
@@ -41,7 +42,10 @@ export function drawMap(
     c.fillRect(npc.x * sx - 2, npc.y * sy - 2, 4, 4);
   });
   const boss = area.spawns.find((spawn) => spawn.kind === 'golem');
-  if (boss && state.world.quests.sentinel === 'active' && !state.world.bossDefeated) {
+  const huntingWarden = objectiveSummary(state).some(
+    (entry) => entry.id === 'sentinel-defeat' && entry.current,
+  );
+  if (boss && huntingWarden) {
     c.strokeStyle = '#d3876d';
     c.strokeRect(boss.x * sx - 4, boss.y * sy - 4, 8, 8);
   }

@@ -2,7 +2,8 @@ import Phaser from 'phaser';
 import { BALANCE, ENEMIES, JOBS } from '../content/catalog';
 import { AREAS, contains, regionAt, safeLocation, type AreaDefinition } from '../content/world';
 import { maxHp, newGame, recoverFromDefeat, useTonic } from '../domain/progression';
-import type { GameState, Point } from '../domain/types';
+import { recordMilestone } from '../domain/objectives';
+import type { GameState, MapId, Point } from '../domain/types';
 import type { GameAudio } from '../platform/audio';
 import { InputController } from '../platform/input';
 import type { SaveStore } from '../platform/save';
@@ -61,6 +62,7 @@ export class WorldScene extends Phaser.Scene {
   private hudTimer = 0;
   private currentRegion = '';
   private wasBlocked = true;
+  private gateToastTimer = 0;
   private rollDirection: Point = { x: 0, y: 1 };
   private sceneData: SceneData = {};
 
@@ -89,6 +91,7 @@ export class WorldScene extends Phaser.Scene {
     this.rollDirection = { ...this.facing };
     this.currentRegion = '';
     this.wasBlocked = true;
+    this.gateToastTimer = 0;
   }
 
   create(): void {
@@ -133,6 +136,8 @@ export class WorldScene extends Phaser.Scene {
       attack: 0,
       duration: BALANCE.attackCooldown,
       combo: 0,
+      moving: false,
+      time: 0,
     });
     this.effects = new Effects(this, this.area);
     this.enemies = new EnemySystem(
@@ -216,8 +221,18 @@ export class WorldScene extends Phaser.Scene {
       document.removeEventListener('visibilitychange', onHidden);
       window.removeEventListener('pagehide', onPageHide);
     });
+    // Per-area soundtrack: warm village modes outside, sparse dark modes inside.
+    this.audio.setTheme(this.area.indoor ? 'dungeon' : 'village');
     this.sceneData.source = undefined;
     this.transitioning = false;
+    // Discovery milestones: arriving in the area is the activity that records them.
+    const discovered: Partial<Record<MapId, string>> = {
+      'old-watch': 'found-old-watch',
+      'north-road': 'found-north-road',
+      'watch-vault': 'found-vault',
+    };
+    const found = discovered[this.state.player.mapId];
+    if (found) recordMilestone(this.state, found);
     // Covers transitions, save-slot loads and defeat recovery, after the new view exists.
     for (const area of Object.values(AREAS))
       if (area !== this.area) releaseAreaTextures(this, area);
@@ -265,6 +280,7 @@ export class WorldScene extends Phaser.Scene {
     this.rollCooldown = Math.max(0, this.rollCooldown - dt);
     this.invulnerable = Math.max(0, this.invulnerable - dt);
     this.comboTimer = Math.max(0, this.comboTimer - dt);
+    this.gateToastTimer = Math.max(0, this.gateToastTimer - dt);
     if (this.comboTimer === 0) this.combo = 0;
     this.state.player.stamina = Math.min(
       100,
@@ -313,10 +329,12 @@ export class WorldScene extends Phaser.Scene {
         : this.facing.y < 0
           ? 'up'
           : 'down';
+    // Idle characters blink on a slow deterministic beat; walking uses the stride.
+    const blink = !movement.x && !movement.y && Math.floor(this.animationTime / 0.45) % 8 === 7;
     this.hero.setTexture(
       movement.x || movement.y
         ? `player-${this.dir}-${1 + (Math.floor(this.animationTime * 8) % 2)}`
-        : `player-${this.dir}-0`,
+        : `player-${this.dir}-${blink ? 3 : 0}`,
     );
     this.hero.setFlipX(this.dir === 'side' && this.facing.x < 0);
     this.hero
@@ -329,6 +347,8 @@ export class WorldScene extends Phaser.Scene {
       attack: this.attackTimer,
       duration: BALANCE.attackCooldown,
       combo: this.combo,
+      moving: !!(movement.x || movement.y),
+      time: this.animationTime,
     });
     this.state.player.position.x = this.hero.x;
     this.state.player.position.y = this.hero.y;
@@ -336,8 +356,16 @@ export class WorldScene extends Phaser.Scene {
     if (this.transitioning) return;
     const exit = this.area.exits.find((candidate) => contains(candidate, this.hero));
     if (exit && !this.ui.blocked) {
-      this.transition(exit);
-      return;
+      if (exit.gate && !exit.gate.unlocked(this.state)) {
+        // Locked exits explain themselves once, then stay quiet until re-approached.
+        if (this.gateToastTimer <= 0) {
+          this.ui.toast(exit.gate.reason);
+          this.gateToastTimer = 2;
+        }
+      } else {
+        this.transition(exit);
+        return;
+      }
     }
     this.effects.update(dt, this.state.world.seconds, this.view.water);
     const region = regionAt(this.area, this.hero.x, this.hero.y).name;

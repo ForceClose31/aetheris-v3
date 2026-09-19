@@ -34,15 +34,20 @@ const legacy = {
   },
 };
 
+const legacyIds: MapId[] = ['larkhaven', 'mossveil', 'old-watch'];
+
 it('partitions every existing NPC, resource, chest and enemy exactly once', () => {
   for (const field of ['npcs', 'herbs', 'chests'] as const)
     expect(
-      Object.values(AREAS)
-        .flatMap((a) => a[field].map((p) => p.id))
+      Object.entries(AREAS)
+        .filter(([id]) => legacyIds.includes(id as MapId))
+        .flatMap(([, a]) => a[field].map((p) => p.id))
         .sort(),
     ).toEqual(LEGACY_AREA[field].map((p) => p.id).sort());
   const spawns = Object.entries(AREAS).flatMap(([id, area]) =>
-    area.spawns.map((p) => ({ ...p, x: p.x + AREA_ORIGINS[id as MapId].x })),
+    (legacyIds as string[]).includes(id)
+      ? area.spawns.map((p) => ({ ...p, x: p.x + AREA_ORIGINS[id as MapId].x }))
+      : [],
   );
   expect(spawns).toHaveLength(LEGACY_AREA.spawns.length);
   expect(spawns).toEqual(expect.arrayContaining(LEGACY_AREA.spawns));
@@ -51,8 +56,42 @@ it('partitions every existing NPC, resource, chest and enemy exactly once', () =
   expect(AREAS['old-watch'].spawns.map((p) => p.kind)).toEqual(['golem']);
 });
 
+it('registers the Phase 7 areas with gated archive and shortcut transitions', () => {
+  expect(Object.keys(AREAS).sort()).toEqual([
+    'interior-chapel',
+    'interior-farm',
+    'interior-forge',
+    'interior-guild',
+    'interior-healer',
+    'interior-inn',
+    'larkhaven',
+    'mossveil',
+    'north-cave',
+    'north-road',
+    'old-watch',
+    'watch-crypt',
+    'watch-vault',
+  ]);
+  const state = newGame();
+  const vaultExit = AREAS['old-watch'].exits.find((exit) => exit.id === 'watch-vault')!;
+  expect(vaultExit.gate?.unlocked(state)).toBe(false);
+  state.world.bossDefeated = true;
+  expect(vaultExit.gate?.unlocked(state)).toBe(true);
+  const shortcut = AREAS['north-road'].exits.find((exit) => exit.id === 'north-shortcut')!;
+  expect(shortcut.gate?.unlocked(state)).toBe(false);
+  state.world.opened.push('north-road-cache');
+  expect(shortcut.gate?.unlocked(state)).toBe(true);
+  const watchSide = AREAS['old-watch'].exits.find((exit) => exit.id === 'watch-north')!;
+  expect(watchSide.gate?.unlocked(state)).toBe(true);
+  expect(AREAS['north-road'].spawns.every((spawn) => spawn.kind !== 'golem')).toBe(true);
+  expect(AREAS['watch-vault'].spawns.map((spawn) => spawn.kind)).toEqual([
+    'automaton',
+    'automaton',
+  ]);
+});
+
 it('connects all exits in both directions with safe, non-aggro entries and distinct terrain', () => {
-  expect(new Set(Object.values(AREAS).map((a) => a.terrainKey)).size).toBe(3);
+  expect(new Set(Object.values(AREAS).map((a) => a.terrainKey)).size).toBe(13);
   for (const [id, area] of Object.entries(AREAS)) {
     expect(safeLocation(area, area.spawn)).toBe(true);
     for (const exit of area.exits) {
@@ -89,9 +128,13 @@ it.each([
       },
     });
     const loaded = store.read(1)!;
-    expect(loaded.version).toBe(3);
+    expect(loaded.version).toBe(5);
     expect(loaded.state).toEqual({
-      world: fixture.state.world,
+      world: {
+        ...fixture.state.world,
+        kills: { ...fixture.state.world.kills, automaton: 0 },
+        milestones: ['found-old-watch'],
+      },
       player: {
         level: 10,
         xp: 12,

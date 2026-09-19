@@ -1460,3 +1460,31 @@ footer button svg {
     opacity: 0;
   }
 }
+
+/* Speaker portrait (semi-MMORPG dialog presentation). */
+.dialog-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.dialog-portrait {
+  width: 84px;
+  height: 84px;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+  border: 2px solid #1c2a26;
+  box-shadow:
+    0 0 0 1px #e8d9a855,
+    0 4px 14px #0009;
+  background: #22352d;
+}
+
+.dialog-text {
+  min-width: 0;
+}
+
+.dialog-text .shop-item,
+.dialog-text .reward {
+  margin-left: 0;
+}

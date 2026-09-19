@@ -26,7 +26,16 @@ async function captureScene(page: Page): Promise<void> {
 async function crossExit(page: Page, id: string, target: string): Promise<void> {
   await page.evaluate((exitId) => {
     const scene = window.phase2Scene;
-    const exit = scene['area'].exits.find((e) => e.id === exitId)!;
+    const exit = scene['area'].exits.find((e) => e.id === exitId);
+    if (!exit)
+      throw new Error(
+        'exit ' +
+          exitId +
+          ' missing in ' +
+          scene['area'].terrainKey +
+          ' ids=' +
+          scene['area'].exits.map((e) => e.id).join(','),
+      );
     scene['hero'].setPosition(exit.x + exit.w / 2, exit.y + exit.h / 2);
   }, id);
   await expect
@@ -57,7 +66,7 @@ async function loadFixture(page: Page, state: GameState): Promise<void> {
   await page.evaluate((savedState) => {
     localStorage.setItem(
       'aetheris:save:1',
-      JSON.stringify({ version: 3, savedAt: new Date().toISOString(), state: savedState }),
+      JSON.stringify({ version: 5, savedAt: new Date().toISOString(), state: savedState }),
     );
   }, state);
   await page.getByRole('button', { name: /Lanjutkan perjalanan tersimpan/ }).click();
@@ -245,7 +254,7 @@ test('combat earns quest credit and Mara consumes items and unlocks the boss', a
   await loadFixture(page, fought);
   await page.keyboard.press('KeyE');
   await page.getByRole('button', { name: 'Serahkan Moonleaf' }).click();
-  await expect(page.locator('[data-hud="quest-title"]')).toHaveText('Yang terbangun di utara');
+  await expect(page.locator('[data-hud="quest-title"]')).toHaveText('Jejak di jalan yang ditutup');
   const completed = await saveAndRead(page);
   expect(completed.player.inventory.herb).toBe(0);
   expect(completed.world.quests.supplies).toBe('complete');
@@ -327,7 +336,7 @@ test('the two-phase boss can be defeated and the chapter reward is persistent', 
   expect(finished.world.quests.sentinel).toBe('complete');
   expect(finished.player.gold).toBe(victory.player.gold + 100);
   await loadFixture(page, finished);
-  await expect(page.locator('[data-hud="quest-title"]')).toHaveText('Rumah, untuk sementara');
+  await expect(page.locator('[data-hud="quest-title"]')).toHaveText('Perintah yang tertinggal');
 });
 
 test('repeated exits keep one simulation, cooldowns, respawn, resources, rewards and input listeners', async ({
@@ -389,7 +398,7 @@ test('repeated exits keep one simulation, cooldowns, respawn, resources, rewards
   await page.screenshot({ path: 'test-results/aetheris-phase2-watch.png' });
   await crossExit(page, 'watch-south', 'mossveil');
   await crossExit(page, 'forest-west', 'larkhaven');
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 9; i++) {
     await crossExit(page, 'village-east', 'mossveil');
     await crossExit(page, 'forest-west', 'larkhaven');
   }
@@ -502,4 +511,348 @@ test('death in the watch loads Larkhaven and preserves progression', async ({ pa
   expect(recovered.world.gathered).toEqual(['leaf-1']);
   expect(recovered.world.quests.sentinel).toBe('active');
   expect(await page.evaluate(() => window.phase2Scene['enemies']['actors'].length)).toBe(0);
+});
+
+test('Phase 7: north road and archive flow with gates, caches and persistence', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await ready(page);
+  await captureScene(page);
+  await freshStart(page);
+  await crossExit(page, 'village-east', 'mossveil');
+  await crossExit(page, 'forest-north', 'north-road');
+  // Shortcut gate is locked until the north-road cache is secured.
+  const shortcutLocked = await page.evaluate(() => {
+    const s = window.phase2Scene;
+    return s['area'].exits.find((exit) => exit.id === 'north-shortcut')!.gate!.unlocked(s['state']);
+  });
+  expect(shortcutLocked).toBe(false);
+  // Trail discovery through the real interaction pipeline.
+  await page.evaluate(() => {
+    const s = window.phase2Scene;
+    s['hero'].setPosition(300, 470);
+    s['interactions'].nearby({ x: s['hero'].x, y: s['hero'].y });
+    s['interactions'].interact();
+  });
+  await expect(page.getByRole('button', { name: 'Catat & tutup' })).toBeVisible();
+  await page.evaluate(() => window.phase2Scene['ui'].close());
+  // Cache: open through the interaction pipeline; it unlocks the shortcut.
+  await page.evaluate(() => {
+    const s = window.phase2Scene;
+    s['hero'].setPosition(300, 318);
+    s['interactions'].nearby({ x: s['hero'].x, y: s['hero'].y });
+    s['interactions'].interact();
+  });
+  const cacheState = await page.evaluate(() => {
+    const s = window.phase2Scene;
+    return {
+      opened: s['state'].world.opened,
+      gold: s['state'].player.gold,
+      shortcut: s['area'].exits
+        .find((exit) => exit.id === 'north-shortcut')!
+        .gate!.unlocked(s['state']),
+      milestones: s['state'].world.milestones,
+    };
+  });
+  expect(cacheState.opened).toContain('north-road-cache');
+  expect(cacheState.gold).toBe(37);
+  expect(cacheState.shortcut).toBe(true);
+  await crossExit(page, 'north-shortcut', 'old-watch');
+  // Archive door stays sealed until the warden falls.
+  await page.evaluate(() => {
+    const s = window.phase2Scene;
+    s['hero'].setPosition(680, 350);
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const s = window.phase2Scene;
+        return s['transitioning'] || s['state'].player.mapId !== 'old-watch';
+      }),
+    )
+    .toBe(false);
+  await page.evaluate(() => {
+    window.phase2Scene['state'].world.bossDefeated = true;
+  });
+  await crossExit(page, 'watch-vault', 'watch-vault');
+  const vaultAudit = await page.evaluate(() => {
+    const s = window.phase2Scene;
+    return {
+      indoor: s['area'].indoor,
+      kinds: s['enemies']['actors'].map(
+        (actor: { definition: { id: string } }) => actor.definition.id,
+      ),
+      milestones: s['state'].world.milestones,
+    };
+  });
+  expect(vaultAudit.indoor).toBe(true);
+  expect(vaultAudit.kinds).toEqual(['automaton', 'automaton']);
+  // Control points and reward through the interaction pipeline.
+  for (const [x, y] of [
+    [150, 268],
+    [490, 268],
+    [320, 68],
+    [320, 138],
+  ] as const) {
+    await page.evaluate(
+      ([px, py]) => {
+        const s = window.phase2Scene;
+        s['hero'].setPosition(px, py);
+        s['interactions'].nearby({ x: s['hero'].x, y: s['hero'].y });
+        s['interactions'].interact();
+      },
+      [x, y],
+    );
+    await page.evaluate(() => window.phase2Scene['ui'].close());
+  }
+  const vaultState = await page.evaluate(() => {
+    const s = window.phase2Scene;
+    return {
+      milestones: s['state'].world.milestones,
+      opened: s['state'].world.opened,
+      gold: s['state'].player.gold,
+      bossDefeated: s['state'].world.bossDefeated,
+    };
+  });
+  expect(vaultState.milestones).toEqual(
+    expect.arrayContaining(['found-vault', 'vault-seal-a', 'vault-seal-b', 'vault-note-read']),
+  );
+  expect(vaultState.opened).toContain('vault-reward');
+  expect(vaultState.gold).toBe(82);
+  expect(vaultState.bossDefeated).toBe(true);
+  // Exit, revisit north-road through the unlocked shortcut: caches stay open.
+  await crossExit(page, 'vault-south', 'old-watch');
+  await crossExit(page, 'watch-north', 'north-road');
+  const revisit = await page.evaluate(() => {
+    const s = window.phase2Scene;
+    return {
+      opened: s['state'].world.opened,
+      milestones: s['state'].world.milestones,
+      chests: [...s['view'].chests.values()].filter(
+        (chest: Phaser.GameObjects.Image) => chest.tintTopLeft !== 0,
+      ).length,
+    };
+  });
+  expect(revisit.opened).toEqual(expect.arrayContaining(['north-road-cache']));
+  expect(revisit.milestones).toContain('found-north-road');
+  expect(revisit.chests).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test('Phase 8: the full campaign resolves through normal gameplay', async ({ page }) => {
+  test.setTimeout(300_000);
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await ready(page);
+  await captureScene(page);
+  await freshStart(page);
+
+  // Part 1 — Mara asks for help; three slimes across the bridge fall to real combat.
+  await page.evaluate(() => window.phase2Scene['hero'].setPosition(500, 635));
+  await page.keyboard.press('KeyE');
+  await page.getByRole('button', { name: 'Aku akan membantu' }).click();
+  await crossExit(page, 'village-east', 'mossveil');
+  for (const [x, y] of [
+    [226, 560],
+    [316, 725],
+    [456, 675],
+  ] as const) {
+    await page.evaluate(
+      ([px, py]) => {
+        const s = window.phase2Scene;
+        s['hero'].body!.reset(px, py);
+        s['hero'].setPosition(px, py);
+      },
+      [x, y],
+    );
+    await page.keyboard.down('KeyJ');
+    await page.waitForTimeout(2200);
+    await page.keyboard.up('KeyJ');
+  }
+  await expect
+    .poll(() => page.evaluate(() => window.phase2Scene['state'].world.questKills))
+    .toBeGreaterThanOrEqual(3);
+  // Moonleaf gathering, then Mara's report opens the investigation.
+  for (const [x, y] of [
+    [176, 632],
+    [286, 826],
+    [450, 625],
+  ] as const) {
+    await page.evaluate(([px, py]) => window.phase2Scene['hero'].setPosition(px, py), [x, y]);
+    await page.keyboard.press('KeyE');
+  }
+  await crossExit(page, 'forest-west', 'larkhaven');
+  await page.evaluate(() => window.phase2Scene['hero'].setPosition(500, 635));
+  await page.keyboard.press('KeyE');
+  await page.getByRole('button', { name: 'Serahkan Moonleaf' }).click();
+  await expect(page.locator('[data-hud="quest-title"]')).toHaveText('Jejak di jalan yang ditutup');
+
+  // Part 2 — the north road: trail notes, the guarded cache, the shortcut.
+  await crossExit(page, 'village-east', 'mossveil');
+  await crossExit(page, 'forest-north', 'north-road');
+  // Clear the authored encounters along the route — this is the intended level-up.
+  for (const [x, y] of [
+    [480, 830],
+    [250, 470],
+    [350, 390],
+    [540, 290],
+    [300, 610],
+  ] as const) {
+    await page.evaluate(
+      ([px, py]) => {
+        const s = window.phase2Scene;
+        s['hero'].body!.reset(px, py);
+        s['hero'].setPosition(px, py);
+      },
+      [x, y],
+    );
+    await page.keyboard.down('KeyJ');
+    await page.waitForTimeout(2600);
+    await page.keyboard.up('KeyJ');
+  }
+  await page.evaluate(() => window.phase2Scene['hero'].setPosition(300, 470));
+  await page.keyboard.press('KeyE');
+  await page.getByRole('button', { name: 'Catat & tutup' }).click();
+  await page.evaluate(() => window.phase2Scene['hero'].setPosition(300, 318));
+  await page.keyboard.press('KeyE');
+  await crossExit(page, 'north-shortcut', 'old-watch');
+
+  // Part 3 — Borin turns cache material into gear, then the warden falls.
+  await crossExit(page, 'watch-south', 'mossveil');
+  await crossExit(page, 'forest-west', 'larkhaven');
+  await page.evaluate(() => window.phase2Scene['hero'].setPosition(602, 530));
+  await page.keyboard.press('KeyE');
+  await page.getByRole('button', { name: 'Beli Pedang besi' }).click();
+  await page.getByRole('button', { name: 'Beli Rompi empuk' }).click();
+  await page.keyboard.press('Escape');
+  await crossExit(page, 'village-east', 'mossveil');
+  await crossExit(page, 'forest-watch', 'old-watch');
+  await page.evaluate(() => window.phase2Scene['hero'].setPosition(210, 320));
+  await expect(page.locator('.boss-hud')).toBeVisible({ timeout: 10_000 });
+  // Normal play: chase the retreating warden, swing, and drink tonics when hurt.
+  await page.keyboard.down('KeyJ');
+  for (let round = 0; round < 60; round++) {
+    await page.waitForTimeout(500);
+    const fight = await page.evaluate(() => {
+      const s = window.phase2Scene;
+      if (s['state'].world.bossDefeated) return 'dead';
+      const boss = s['enemies']['actors'].find((a) => a.definition.id === 'golem');
+      if (boss && boss.sprite.active) {
+        const dx = boss.sprite.x - s['hero'].x;
+        const dy = boss.sprite.y - s['hero'].y;
+        const len = Math.hypot(dx, dy) || 1;
+        s['facing'] = { x: dx / len, y: dy / len };
+        const dist = Math.hypot(dx, dy);
+        if (dist > 130) {
+          const px = boss.sprite.x + 30;
+          const py = boss.sprite.y + 60;
+          s['hero'].body!.reset(px, py);
+          s['hero'].setPosition(px, py);
+        } else if (dist < 30) {
+          const px = s['hero'].x;
+          const py = s['hero'].y + 45;
+          s['hero'].body!.reset(px, py);
+          s['hero'].setPosition(px, py);
+        }
+      }
+      return s['state'].player.hp < 65 ? 'heal' : 'fight';
+    });
+    if (fight === 'dead') break;
+    if (fight === 'heal') await page.keyboard.press('KeyR');
+  }
+  await page.keyboard.up('KeyJ');
+  expect(await page.evaluate(() => window.phase2Scene['state'].player.mapId)).toBe('old-watch');
+  expect(await page.evaluate(() => window.phase2Scene['state'].world.bossDefeated)).toBe(true);
+
+  // Part 4 — the cap sends the player to the archive beneath the watch.
+  await crossExit(page, 'watch-south', 'mossveil');
+  await crossExit(page, 'forest-west', 'larkhaven');
+  await page.evaluate(() => window.phase2Scene['hero'].setPosition(500, 635));
+  await page.keyboard.press('KeyE');
+  await page.getByRole('button', { name: 'Selesaikan perjalanan pertama' }).click();
+  await expect(page.locator('[data-hud="quest-title"]')).toHaveText('Perintah yang tertinggal');
+
+  // Part 5 — the vault: two seals, the command note, the guaranteed reward.
+  await crossExit(page, 'village-east', 'mossveil');
+  await crossExit(page, 'forest-watch', 'old-watch');
+  await crossExit(page, 'watch-vault', 'watch-vault');
+  for (const [x, y, guard, dialog] of [
+    [150, 268, true, true],
+    [490, 268, true, true],
+    [320, 68, false, true],
+    [320, 138, false, false],
+  ] as const) {
+    await page.evaluate(
+      ([px, py]) => {
+        const s = window.phase2Scene;
+        s['hero'].body!.reset(px, py);
+        s['hero'].setPosition(px, py);
+      },
+      [x, y],
+    );
+    if (guard) {
+      // Secure the control point: aim at the automaton, swing until it falls.
+      await page.evaluate(
+        ([px, py]) => {
+          const s = window.phase2Scene;
+          const actor = s['enemies']['actors'].find(
+            (candidate: { hp: number; sprite: { active: boolean } }) =>
+              candidate.hp > 0 && candidate.sprite.active,
+          );
+          if (actor) {
+            const dx = actor.sprite.x - s['hero'].x;
+            const dy = actor.sprite.y - s['hero'].y;
+            const len = Math.hypot(dx, dy) || 1;
+            s['facing'] = { x: dx / len, y: dy / len };
+          }
+          void px;
+          void py;
+        },
+        [x, y],
+      );
+      await page.keyboard.down('KeyJ');
+      await page.waitForTimeout(2600);
+      await page.keyboard.up('KeyJ');
+      await page.keyboard.press('KeyR');
+    }
+    await page.evaluate(
+      ([px, py]) => window.phase2Scene['interactions'].nearby({ x: px, y: py }),
+      [x, y],
+    );
+    await page.keyboard.press('KeyE');
+    if (dialog) await page.getByRole('button', { name: 'Catat & tutup' }).click();
+  }
+
+  // Part 6 — report back to Mara; the campaign resolves and stays resolved.
+  await crossExit(page, 'vault-south', 'old-watch');
+  await crossExit(page, 'watch-south', 'mossveil');
+  await crossExit(page, 'forest-west', 'larkhaven');
+  await page.evaluate(() => window.phase2Scene['hero'].setPosition(500, 635));
+  await page.keyboard.press('KeyE');
+  await page.getByRole('button', { name: 'Sampaikan temuanmu' }).click();
+  await expect(page.locator('[data-hud="quest-title"]')).toHaveText('Rumah, untuk sementara');
+  const resolved = await saveAndRead(page);
+  expect(resolved.world.milestones).toContain('campaign-complete');
+  expect(resolved.player.level).toBeGreaterThanOrEqual(5);
+  expect(resolved.player.equipment.weapon).toBe('iron-sword');
+
+  // Reload the completed save: resolution persists and rewards do not repeat.
+  await loadFixture(page, resolved);
+  await page.evaluate(() => window.phase2Scene['hero'].setPosition(500, 635));
+  await page.keyboard.press('KeyE');
+  await page.getByRole('button', { name: 'Sampai nanti' }).click();
+  const after = await page.evaluate(() => {
+    const s = window.phase2Scene;
+    return {
+      complete: s['state'].world.milestones.includes('campaign-complete'),
+      gold: s['state'].player.gold,
+      title: document.querySelector('[data-hud="quest-title"]')?.textContent,
+    };
+  });
+  expect(after.complete).toBe(true);
+  expect(after.gold).toBe(resolved.player.gold);
+  expect(after.title).toBe('Rumah, untuk sementara');
+  expect(errors).toEqual([]);
 });

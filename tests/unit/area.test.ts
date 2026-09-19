@@ -89,7 +89,10 @@ it('uses the supplied area for world collision, interactions, water and atlas ma
     cameras: { main: { width: 320, height: 240, zoom: 1 } },
   } as unknown as Phaser.Scene;
   const state = newGame();
+  state.world.quests.supplies = 'complete';
   state.world.quests.sentinel = 'active';
+  state.world.milestones.push('supplies-reported', 'north-road-trail-read');
+  state.world.opened.push('north-road-cache');
   const view = buildWorld(scene, state, area);
   expect(scene.add.image).toHaveBeenCalledWith(0, 0, 'test-terrain/ground-0');
   expect(view.obstacles).toContainEqual({ x: 400, y: 0, w: 96, h: 160 });
@@ -132,7 +135,7 @@ it('uses the supplied area for world collision, interactions, water and atlas ma
   expect(regionAt(area, 500, 585).name).toBe('Test');
 });
 
-it('migrates an original version 1 payload, writing version 3 only on successful save', () => {
+it('migrates an original version 1 payload, writing version 5 only on successful save', () => {
   const record = {
     version: 1,
     savedAt: '2026-09-18T00:00:00.000Z',
@@ -168,9 +171,10 @@ it('migrates an original version 1 payload, writing version 3 only on successful
     },
   });
   const loaded = store.read(1);
-  expect(loaded?.version).toBe(3);
+  expect(loaded?.version).toBe(5);
   expect(loaded?.state.player.equipment).toEqual({ weapon: 'wood-sword', body: null, head: null });
   expect(loaded?.state.player).not.toHaveProperty('weapon');
+  expect(loaded?.state.world.milestones).toEqual([]);
   expect(loaded?.state.player.inventory).toEqual({
     herb: 0,
     tonic: 3,
@@ -182,5 +186,5 @@ it('migrates an original version 1 payload, writing version 3 only on successful
   });
   expect(JSON.parse(stored)).toEqual(record);
   expect(store.write(1, loaded!.state)).toEqual({ ok: true });
-  expect(JSON.parse(stored)).toMatchObject({ version: 3, state: loaded!.state });
+  expect(JSON.parse(stored)).toMatchObject({ version: 5, state: loaded!.state });
 });

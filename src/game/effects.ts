@@ -63,12 +63,23 @@ export class Effects {
     const camera = this.scene.cameras.main;
     const width = camera.width / camera.zoom;
     const height = camera.height / camera.zoom;
+    const indoor = this.area.indoor;
     const hour = (8 + seconds / 45) % 24;
-    const dark = hour >= 18 || hour < 6;
-    const rain = Math.floor(seconds / 150) % 3 === 1;
-    this.tint.setSize(camera.width * 2, camera.height * 2).setAlpha(dark ? 0.35 : rain ? 0.12 : 0);
+    const dark = !indoor && (hour >= 18 || hour < 6);
+    const rain = !indoor && Math.floor(seconds / 150) % 3 === 1;
+    this.tint
+      .setSize(camera.width * 2, camera.height * 2)
+      .setAlpha(indoor ? 0.14 : dark ? 0.35 : rain ? 0.12 : 0);
     this.ambient.clear();
-    if (rain) {
+    if (indoor) {
+      // Enclosed air: slow dust motes instead of weather.
+      for (let i = 0; i < 12; i++) {
+        const x = (i * 211.7 + this.time * 6) % width;
+        const y = (i * 97.3 + Math.sin(this.time * 0.4 + i) * 10 + height) % height;
+        this.ambient.fillStyle(0xd8cdb0, 0.16);
+        this.ambient.fillRect(x, y, 2, 2);
+      }
+    } else if (rain) {
       this.ambient.lineStyle(1, 0xc1dcdb, 0.28);
       for (let i = 0; i < 65; i++) {
         const x = (i * 137.3 + this.time * 40) % width;
